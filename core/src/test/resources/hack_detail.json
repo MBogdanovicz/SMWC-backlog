@@ -1,0 +1,13 @@
+{
+  "id": 38044,
+  "name": "Super Example World",
+  "time": 1754000000,
+  "authors": [{"id": 1, "name": "Alice"}],
+  "rating": 4.6,
+  "downloads": 1234,
+  "size": 512000,
+  "download_url": "//dl.smwcentral.net/38044/sew.zip",
+  "images": ["/image/38044_1.png", "https://example.com/2.png"],
+  "fields": {"description": "<p>Uma hack <b>legal</b>.</p>"},
+  "raw_fields": {"type": "Standard: Easy", "length": "12 exit(s)", "tags": ["vanilla", "short"]}
+}

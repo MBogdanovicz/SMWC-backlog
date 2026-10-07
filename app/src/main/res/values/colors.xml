@@ -1,0 +1,5 @@
+<resources>
+    <color name="ic_launcher_background">#101218</color>
+    <!-- Window and splash screen backgrounds; they match the app theme's background. -->
+    <color name="window_background">#F7F6F2</color>
+</resources>

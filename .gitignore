@@ -1,0 +1,34 @@
+# Gradle and Kotlin build outputs and caches
+.gradle/
+build/
+.kotlin/
+.cxx/
+.externalNativeBuild/
+captures/
+
+# Built packages
+*.apk
+*.aab
+*.ap_
+output-metadata.json
+
+# Per-machine settings: SDK location (and anything else Android Studio writes there)
+local.properties
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Release signing: never commit the key or its passwords.
+keystore.properties
+*.jks
+# Includes the shared debug key (app/debug.keystore): it stays private too (see README).
+*.keystore

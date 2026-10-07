@@ -1,0 +1,4 @@
+<resources>
+    <!-- The debug build is a separate app (".debug" id), so it is named apart from the release. -->
+    <string name="app_name">SMWC Backlog (debug)</string>
+</resources>
