@@ -56,14 +56,24 @@ jobs:
           SMWC_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: ./gradlew :core:test :app:testDebugUnitTest :app:assembleRelease -PappVersion="${GITHUB_REF_NAME#v}" --console=plain
 
-      - name: Check the APK is signed
+      - name: Check the APK is signed with the release key
+        env:
+          # The release certificate's SHA-256 (public). Devices only accept updates signed with it.
+          RELEASE_CERT_SHA256: a41155ff169886f7d97132da7a2921f76b1bd51383c23f805d1f0931a03d4eb9
         run: |
           apk=app/build/outputs/apk/release/app-release.apk
           if [[ ! -f "$apk" ]]; then
             echo "::error::No signed APK (the signing secrets are missing or wrong)"
             exit 1
           fi
-          "$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs "$apk" | grep "SHA-256 digest"
+          # The runner has several build-tools versions: use the newest one's apksigner.
+          build_tools=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -n 1)
+          certs=$("${build_tools}apksigner" verify --print-certs "$apk")
+          echo "$certs" | grep "SHA-256 digest"
+          if ! grep -q "SHA-256 digest: $RELEASE_CERT_SHA256" <<< "$certs"; then
+            echo "::error::The APK is not signed with the release key (check the RELEASE_* secrets)"
+            exit 1
+          fi
 
       - name: Publish the GitHub release
         env:
