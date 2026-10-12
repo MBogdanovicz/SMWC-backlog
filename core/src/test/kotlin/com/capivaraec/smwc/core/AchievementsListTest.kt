@@ -9,6 +9,7 @@ import com.capivaraec.smwc.core.ra.RaAchievement
 import com.capivaraec.smwc.core.ra.RaGame
 import com.capivaraec.smwc.core.ra.RaProgress
 import com.capivaraec.smwc.core.ra.mastered
+import com.capivaraec.smwc.core.ra.shownAchievements
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -46,6 +47,15 @@ class AchievementsListTest {
         assertTrue(progress(hardcore = 3, softcoreOnly = 0, locked = 0).mastered)
         assertFalse(progress(hardcore = 2, softcoreOnly = 1, locked = 0).mastered)
         assertFalse(progress(hardcore = 2, softcoreOnly = 0, locked = 1).mastered)
+    }
+
+    @Test
+    fun lockedOnlyHidesSoftcoreAndHardcoreUnlocks() {
+        val progress = progress(hardcore = 1, softcoreOnly = 1, locked = 2)
+
+        assertEquals(listOf(2L, 3L), progress.shownAchievements(lockedOnly = true).map { it.id })
+        assertEquals(listOf(0L, 1L, 2L, 3L), progress.shownAchievements(lockedOnly = false).map { it.id })
+        assertTrue(progress(hardcore = 2, softcoreOnly = 1, locked = 0).shownAchievements(lockedOnly = true).isEmpty())
     }
 
     @Test

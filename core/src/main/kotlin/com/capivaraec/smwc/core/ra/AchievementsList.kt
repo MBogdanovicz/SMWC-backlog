@@ -70,3 +70,10 @@ data class AchievementFilter(
 
 /** Mastered, as RetroAchievements defines it: every achievement unlocked in hardcore mode. */
 val RaProgress.mastered: Boolean get() = achievements.isNotEmpty() && earnedHardcore == achievements.size
+
+/**
+ * The achievements to list on a set's screen, unlocked first. [lockedOnly] leaves out the ones
+ * already unlocked (in softcore or hardcore).
+ */
+fun RaProgress.shownAchievements(lockedOnly: Boolean): List<RaAchievement> =
+    if (lockedOnly) achievements.filterNot { it.earned } else achievements.sortedByDescending { it.earned }

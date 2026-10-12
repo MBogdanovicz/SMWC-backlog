@@ -29,6 +29,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.FilterAlt
@@ -57,6 +58,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -75,6 +77,7 @@ import com.capivaraec.smwc.core.ra.RaAchievement
 import com.capivaraec.smwc.core.ra.RaMatchKind
 import com.capivaraec.smwc.core.ra.RaProgress
 import com.capivaraec.smwc.core.ra.mastered
+import com.capivaraec.smwc.core.ra.shownAchievements
 
 private fun RaProgress.summary(): String =
     "$earned/${achievements.size} achievements · $earnedPoints/${achievements.sumOf { it.points }} pts"
@@ -298,8 +301,8 @@ private fun SetRow(row: AchievementRow, selected: Boolean, onClick: () -> Unit) 
 }
 
 /**
- * Every achievement of one set, unlocked first. [onBack] null when shown as a pane beside the
- * list (no back button then).
+ * Every achievement of one set, unlocked first, or only the locked ones. [onBack] null when shown
+ * as a pane beside the list (no back button then).
  */
 @Composable
 fun RaSetScreen(app: SmwcApplication, gameId: Long, hackId: Long?, onOpenHack: (() -> Unit)?, onBack: (() -> Unit)?) {
@@ -307,6 +310,7 @@ fun RaSetScreen(app: SmwcApplication, gameId: Long, hackId: Long?, onOpenHack: (
     val state by vm.state.collectAsStateWithLifecycle()
     val suggestCompleting by vm.suggestCompleting.collectAsStateWithLifecycle()
     val uri = LocalUriHandler.current
+    var lockedOnly by rememberSaveable { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize()) {
         onBack?.let {
@@ -361,9 +365,27 @@ fun RaSetScreen(app: SmwcApplication, gameId: Long, hackId: Long?, onOpenHack: (
                                     }
                                     onOpenHack?.let { OutlinedButton(shape = MaterialTheme.shapes.medium, onClick = it) { Text("Hack details") } }
                                 }
+                                ControlChip(
+                                    "Locked only",
+                                    onClick = { lockedOnly = !lockedOnly },
+                                    icon = if (lockedOnly) Icons.Default.Check else null,
+                                    active = lockedOnly,
+                                )
                             }
                         }
-                        items(progress.achievements.sortedByDescending { it.earned }, key = { it.id }) { achievement ->
+                        val shown = progress.shownAchievements(lockedOnly)
+                        if (shown.isEmpty() && progress.achievements.isNotEmpty()) {
+                            item(span = { GridItemSpan(maxLineSpan) }) {
+                                Text(
+                                    "All achievements unlocked",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(vertical = 24.dp).fillMaxWidth(),
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
+                        }
+                        items(shown, key = { it.id }) { achievement ->
                             AchievementItem(achievement)
                         }
                     }
