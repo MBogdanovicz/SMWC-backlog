@@ -29,6 +29,8 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.AlertDialog
@@ -150,7 +152,15 @@ fun DetailScreen(
                     if (detail.latestVersionId != null) {
                         NewerVersionNotice(inBacklog = entry != null, switching = switching, onSwitch = vm::switchToNewerVersion)
                     }
-                    RaSetCard(ra, raProgress, onOpenRaSet)
+                    // Unlinking is remembered in the hack's list entry, so it needs one.
+                    RaSetCard(
+                        ra = ra,
+                        progress = raProgress,
+                        hackName = detail.summary.name,
+                        onOpenRaSet = onOpenRaSet,
+                        onUnlink = (vm::unlinkRaSet).takeIf { entry != null },
+                        onRelink = (vm::relinkRaSets).takeIf { entry?.raUnlinkedGameIds?.isNotEmpty() == true },
+                    )
                     StatusActions(
                         status = entry?.status,
                         onAdd = vm::add,
@@ -239,9 +249,20 @@ private fun Header(detail: HackDetail) {
 /** e.g. "2025-12-26", in the device's time zone. */
 private val releaseDate = DateTimeFormatter.ISO_LOCAL_DATE.withZone(ZoneId.systemDefault())
 
-/** Whether the hack has a RetroAchievements set and the user's progress in it; tapping opens the set. */
+/**
+ * Whether the hack has a RetroAchievements set and the user's progress in it; tapping opens the set.
+ * A set matched only by name can be unlinked ([onUnlink]) when it is another game, and
+ * [onRelink] undoes that; each is null when not offered.
+ */
 @Composable
-private fun RaSetCard(ra: RaLookup, progress: RaProgress?, onOpenRaSet: (gameId: Long) -> Unit) {
+private fun RaSetCard(
+    ra: RaLookup,
+    progress: RaProgress?,
+    hackName: String,
+    onOpenRaSet: (gameId: Long) -> Unit,
+    onUnlink: (() -> Unit)?,
+    onRelink: (() -> Unit)?,
+) {
     val (title, detail, gameId) = when (ra) {
         RaLookup.NotConfigured -> return
         RaLookup.Loading -> Triple("RetroAchievements", "Checking for a set…", null)
@@ -273,6 +294,24 @@ private fun RaSetCard(ra: RaLookup, progress: RaProgress?, onOpenRaSet: (gameId:
                 Text(detail, style = MaterialTheme.typography.bodySmall, color = if (ra is RaLookup.Failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (gameId != null) Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+    val byName = (ra as? RaLookup.Found)?.match?.takeIf { it.kind == RaMatchKind.NAME }
+    var confirmUnlink by rememberSaveable { mutableStateOf(false) }
+    if (byName != null && onUnlink != null) {
+        TextButton(onClick = { confirmUnlink = true }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
+            Icon(Icons.Filled.LinkOff, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Wrong game? Unlink this set")
+        }
+        if (confirmUnlink) {
+            UnlinkRaSetDialog(setTitle = byName.game.title, hackName = hackName, onConfirm = onUnlink, onDismiss = { confirmUnlink = false })
+        }
+    } else if (onRelink != null && ra !is RaLookup.Loading) {
+        TextButton(onClick = onRelink) {
+            Icon(Icons.Filled.Link, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Restore the set you unlinked")
         }
     }
 }

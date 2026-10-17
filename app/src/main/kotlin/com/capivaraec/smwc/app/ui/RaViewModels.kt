@@ -67,7 +67,7 @@ private fun raMatches(app: SmwcApplication): Flow<Map<Long, RaMatch>?> = combine
 ) { doc, index, hashes, credentials ->
     if (credentials == null || index == null) return@combine null
     doc.visible.mapNotNull { entry ->
-        index.find(entry.name, hashes[entry.hackId]?.md5s.orEmpty())?.let { entry.hackId to it }
+        index.find(entry.name, hashes[entry.hackId]?.md5s.orEmpty(), entry.raUnlinkedGameIds)?.let { entry.hackId to it }
     }.toMap()
 }
 
@@ -168,6 +168,9 @@ class AchievementsViewModel(private val app: SmwcApplication) : ViewModel() {
 
     fun markCompleted(hackId: Long) = viewModelScope.launch { app.backlog.setStatus(hackId, BacklogStatus.COMPLETED) }
     fun dismissCompletionSuggestion(hackId: Long) = app.preferences.dismissCompletionSuggestion(hackId)
+
+    /** The set matched by name is another game: stop linking it to this hack (synced). */
+    fun unlinkRaSet(hackId: Long, gameId: Long) = viewModelScope.launch { app.backlog.unlinkRaSet(hackId, gameId) }
 
     fun setSort(sort: AchievementSort) = app.preferences.setAchievementSort(sort)
     fun setFilter(filter: AchievementFilter) = app.preferences.setAchievementFilter(filter)

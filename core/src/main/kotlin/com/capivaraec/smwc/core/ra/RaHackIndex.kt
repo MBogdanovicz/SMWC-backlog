@@ -18,19 +18,24 @@ class RaHackIndex(games: List<RaGame>) {
         for (game in games) for (hash in game.hashes) putIfAbsent(hash.lowercase(), game)
     }
 
-    // On a name clash, the bigger set wins (the other is usually a bonus or old version).
-    private val byName: Map<String, RaGame> = buildMap {
+    // On a name clash, the bigger set comes first (the other is usually a bonus or old version).
+    private val byName: Map<String, List<RaGame>> = buildMap<String, MutableList<RaGame>> {
         for (game in games.sortedByDescending { it.achievements }) {
-            for (key in nameKeys(game.title)) putIfAbsent(key, game)
+            for (key in nameKeys(game.title)) getOrPut(key) { mutableListOf() }.add(game)
         }
     }
 
     val size: Int = games.size
 
-    /** [romMd5s]: hashes of the ROMs the hack's patch produces (see `RomHashRepository`). */
-    fun find(hackName: String, romMd5s: Collection<String> = emptyList()): RaMatch? {
+    /**
+     * [romMd5s]: hashes of the ROMs the hack's patch produces (see `RomHashRepository`).
+     * [unlinkedGameIds]: sets the user said are not this hack; skipped when matching by name.
+     */
+    fun find(hackName: String, romMd5s: Collection<String> = emptyList(), unlinkedGameIds: Collection<Long> = emptySet()): RaMatch? {
         romMd5s.firstNotNullOfOrNull { byHash[it.lowercase()] }?.let { return RaMatch(it, RaMatchKind.HASH) }
-        return nameKeys(hackName).firstNotNullOfOrNull { byName[it] }?.let { RaMatch(it, RaMatchKind.NAME) }
+        return nameKeys(hackName)
+            .firstNotNullOfOrNull { key -> byName[key]?.firstOrNull { it.id !in unlinkedGameIds } }
+            ?.let { RaMatch(it, RaMatchKind.NAME) }
     }
 
     companion object {

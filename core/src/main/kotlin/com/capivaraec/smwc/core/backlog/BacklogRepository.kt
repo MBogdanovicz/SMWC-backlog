@@ -56,6 +56,8 @@ class BacklogRepository(
     suspend fun markCompleted(hackId: Long) = setStatus(hackId, BacklogStatus.COMPLETED)
     suspend fun markBacklog(hackId: Long) = setStatus(hackId, BacklogStatus.BACKLOG)
     suspend fun setNotes(hackId: Long, notes: String) = change { it.setNotes(hackId, notes, now()) }
+    suspend fun unlinkRaSet(hackId: Long, gameId: Long) = change { it.unlinkRaSet(hackId, gameId, now()) }
+    suspend fun relinkRaSets(hackId: Long) = change { it.relinkRaSets(hackId, now()) }
     suspend fun remove(hackId: Long) = change { it.remove(hackId, now()) }
 
     /** Pulls `backlog.json` from Drive, merges it with the local copy, and pushes the result. */

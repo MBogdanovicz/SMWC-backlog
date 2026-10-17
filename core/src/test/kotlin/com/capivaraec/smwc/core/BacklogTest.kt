@@ -236,4 +236,22 @@ class BacklogTest {
         assertEquals(listOf(2L), doc.visible.map { it.hackId })
         assertEquals(20, doc.entry(2)!!.addedAt)
     }
+
+    @Test
+    fun unlinkingARaSetIsSyncedAndCanBeUndone() {
+        var doc = BacklogDocument().add(hack(1), now = 10)
+        doc = doc.unlinkRaSet(1, gameId = 30001, now = 20)
+        assertEquals(setOf(30001L), doc.entry(1)!!.raUnlinkedGameIds)
+        assertEquals(20, doc.entry(1)!!.updatedAt)
+        assertEquals(doc, doc.unlinkRaSet(1, gameId = 30001, now = 25)) // already unlinked: no change
+
+        // Survives JSON and wins a merge over an older copy from another device.
+        val older = BacklogDocument().add(hack(1), now = 10)
+        val merged = BacklogDocument.merge(older, BacklogDocument.fromJson(doc.toJson()))
+        assertEquals(setOf(30001L), merged.entry(1)!!.raUnlinkedGameIds)
+
+        doc = doc.relinkRaSets(1, now = 30)
+        assertTrue(doc.entry(1)!!.raUnlinkedGameIds.isEmpty())
+        assertEquals(30, doc.entry(1)!!.updatedAt)
+    }
 }

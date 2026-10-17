@@ -49,6 +49,11 @@ data class BacklogEntry(
     val notes: String = "",
     /** The hack's first screenshot, for lists. */
     val thumbnailUrl: String? = null,
+    /**
+     * RetroAchievements sets (game ids) the user said are not this hack, so a name match never
+     * links them again. A match by ROM hash is always kept.
+     */
+    val raUnlinkedGameIds: Set<Long> = emptySet(),
 ) {
     /** A newer version of this hack is on SMW Central. */
     val hasNewerVersion: Boolean get() = latestVersionId != null && latestVersionId != hackId
@@ -175,6 +180,16 @@ data class BacklogDocument(
     fun setNotes(hackId: Long, notes: String, now: Long): BacklogDocument = update(hackId) {
         val trimmed = notes.trim()
         if (it.notes == trimmed) it else it.copy(notes = trimmed, updatedAt = now)
+    }
+
+    /** The user says the set matched by name is another game: stop linking it to this hack. */
+    fun unlinkRaSet(hackId: Long, gameId: Long, now: Long): BacklogDocument = update(hackId) {
+        if (gameId in it.raUnlinkedGameIds) it else it.copy(raUnlinkedGameIds = it.raUnlinkedGameIds + gameId, updatedAt = now)
+    }
+
+    /** Undoes [unlinkRaSet] for every set, so name matching links them again. */
+    fun relinkRaSets(hackId: Long, now: Long): BacklogDocument = update(hackId) {
+        if (it.raUnlinkedGameIds.isEmpty()) it else it.copy(raUnlinkedGameIds = emptySet(), updatedAt = now)
     }
 
     fun remove(hackId: Long, now: Long): BacklogDocument =

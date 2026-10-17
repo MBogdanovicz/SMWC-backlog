@@ -131,6 +131,21 @@ class RetroAchievementsTest {
     }
 
     @Test
+    fun unlinkedSetsAreSkippedByNameButNotByHash() {
+        val index = RaHackIndex(RaParser.parseHackList(gameList))
+        assertNull(index.find("Obstinate", unlinkedGameIds = setOf(30001L)))
+
+        val byHash = index.find("Learn 2 Kaizo", romMd5s = listOf("aaaa"), unlinkedGameIds = setOf(6602L))!!
+        assertEquals(6602, byHash.game.id)
+        assertEquals(RaMatchKind.HASH, byHash.kind)
+
+        // On a name clash, unlinking the bigger set falls back to the other one.
+        val small = RaGame(1, "~Hack~ Same", achievements = 5, points = 0, iconUrl = null)
+        val big = RaGame(2, "~Hack~ Same", achievements = 50, points = 0, iconUrl = null)
+        assertEquals(1, RaHackIndex(listOf(small, big)).find("Same", unlinkedGameIds = setOf(2L))?.game?.id)
+    }
+
+    @Test
     fun clientSendsKeyAndParameters() = runTest {
         val urls = mutableListOf<Url>()
         val client = RetroAchievementsClient(HttpClient(MockEngine { urls += it.url; respond(progressBody) }), { RaCredentials("me", "KEY") })

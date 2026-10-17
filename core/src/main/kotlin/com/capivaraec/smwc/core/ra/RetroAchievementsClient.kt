@@ -128,7 +128,8 @@ class RetroAchievementsRepository(
         RaHackIndex(RaParser.parseHackList(text)).also { _index.value = it }
     }
 
-    suspend fun find(hackName: String, romMd5s: Collection<String> = emptyList()): RaMatch? = index().find(hackName, romMd5s)
+    suspend fun find(hackName: String, romMd5s: Collection<String> = emptyList(), unlinkedGameIds: Collection<Long> = emptySet()): RaMatch? =
+        index().find(hackName, romMd5s, unlinkedGameIds)
 
     /** Forgets the user's progress, e.g. after switching to another account. */
     suspend fun clearProgress() = progressLock.withLock {

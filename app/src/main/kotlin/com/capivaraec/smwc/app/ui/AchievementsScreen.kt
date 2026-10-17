@@ -196,7 +196,12 @@ private fun AchievementsList(
                         )
                     }
                     items(state.rows, key = { it.entry.hackId }) { row ->
-                        SetRow(row, selected = row.match.game.id == selectedGameId, onClick = { onOpenSet(row.match.game.id, row.entry.hackId) })
+                        SetRow(
+                            row,
+                            selected = row.match.game.id == selectedGameId,
+                            onClick = { onOpenSet(row.match.game.id, row.entry.hackId) },
+                            onUnlink = { vm.unlinkRaSet(row.entry.hackId, row.match.game.id) },
+                        )
                     }
                 }
             }
@@ -238,9 +243,12 @@ private fun ConnectCard(onOpenSettings: () -> Unit) {
     }
 }
 
-/** A set: icon (with a star when mastered), name, list, progress bar and counts. */
+/**
+ * A set: icon (with a star when mastered), name, list, progress bar and counts. A set matched only
+ * by name has an "Unlink" action, for when it is another game.
+ */
 @Composable
-private fun SetRow(row: AchievementRow, selected: Boolean, onClick: () -> Unit) {
+private fun SetRow(row: AchievementRow, selected: Boolean, onClick: () -> Unit, onUnlink: () -> Unit) {
     val progress = row.progress
     val mastered = progress?.mastered == true
     Surface(
@@ -292,8 +300,30 @@ private fun SetRow(row: AchievementRow, selected: Boolean, onClick: () -> Unit) 
                     setTitle.takeIf { !sameName(it, row.entry.name) }?.let { "Set: $it" },
                     "matched by name".takeIf { row.match.kind == RaMatchKind.NAME },
                 ).joinToString(" · ").replaceFirstChar { it.uppercase() }
-                if (note.isNotEmpty()) {
-                    Text(note, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val byName = row.match.kind == RaMatchKind.NAME
+                if (note.isNotEmpty() || byName) {
+                    var confirmUnlink by rememberSaveable { mutableStateOf(false) }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            note,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (byName) {
+                            TextButton(
+                                onClick = { confirmUnlink = true },
+                                contentPadding = PaddingValues(horizontal = 8.dp),
+                                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                                modifier = Modifier.height(32.dp),
+                            ) { Text("Unlink", style = MaterialTheme.typography.labelMedium) }
+                        }
+                    }
+                    if (confirmUnlink) {
+                        UnlinkRaSetDialog(setTitle = row.match.game.title, hackName = row.entry.name, onConfirm = onUnlink, onDismiss = { confirmUnlink = false })
+                    }
                 }
             }
         }

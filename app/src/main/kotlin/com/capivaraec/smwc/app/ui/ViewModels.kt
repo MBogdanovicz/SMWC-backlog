@@ -20,6 +20,7 @@ import com.capivaraec.smwc.core.backlog.sortedWith
 import com.capivaraec.smwc.core.model.HackDetail
 import com.capivaraec.smwc.core.model.HackSummary
 import com.capivaraec.smwc.core.patch.PatchedRom
+import com.capivaraec.smwc.core.ra.RaMatchKind
 import com.capivaraec.smwc.core.ra.RaProgress
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -169,6 +170,10 @@ class DetailViewModel(private val app: SmwcApplication, private val hackId: Long
     private val _ra = MutableStateFlow<RaLookup>(RaLookup.Loading)
     val ra: StateFlow<RaLookup> = _ra
 
+    /** The hack's name and ROM hashes from the last lookup, to look again after (un)linking a set. */
+    private var raHackName: String? = null
+    private var raMd5s: List<String> = emptyList()
+
     /** The user's progress in the hack's set, when it has one (from the daily cache when fresh). */
     private val _raProgress = MutableStateFlow<RaProgress?>(null)
     val raProgress: StateFlow<RaProgress?> = _raProgress
@@ -193,30 +198,51 @@ class DetailViewModel(private val app: SmwcApplication, private val hackId: Long
 
     /** Looks up the set by name (and known hashes) right away, then again once the ROM hash is computed. */
     private suspend fun findRaSet(detail: HackDetail) {
-        val ra = app.retroAchievements
         if (app.raCredentials.credentials.value == null) {
             _ra.value = RaLookup.NotConfigured
             return
         }
-        val name = detail.summary.name
+        raHackName = detail.summary.name
         _ra.value = RaLookup.Loading
-        suspend fun lookup(md5s: List<String>) {
-            _ra.value = runCatching { ra.find(name, md5s) }.fold(
-                onSuccess = { match -> match?.let { RaLookup.Found(it) } ?: RaLookup.NoSet },
-                onFailure = { RaLookup.Failed("RetroAchievements: ${it.message ?: it.javaClass.simpleName}") },
-            )
-            (_ra.value as? RaLookup.Found)?.let { found ->
-                if (_raProgress.value?.game?.id != found.match.game.id) {
-                    _raProgress.value = runCatching { ra.progress(found.match.game.id) }.getOrNull()
-                }
-            }
-        }
         lookup(app.romHashes.hashes.value[hackId]?.md5s.orEmpty())
         val url = detail.downloadUrl ?: return
         if (!app.cleanRom.available.value || !app.romHashes.isOutdated(hackId, url)) return
         runCatching { app.romHashes.resolve(hackId, url) }
             .onSuccess { lookup(it.md5s) }
             .onFailure { Log.w("SmwcRom", "Could not hash hack $hackId", it) }
+    }
+
+    private suspend fun lookup(md5s: List<String> = raMd5s) {
+        val ra = app.retroAchievements
+        val name = raHackName ?: return
+        raMd5s = md5s
+        val unlinked = app.backlog.state.value.entry(hackId)?.raUnlinkedGameIds.orEmpty()
+        _ra.value = runCatching { ra.find(name, md5s, unlinked) }.fold(
+            onSuccess = { match -> match?.let { RaLookup.Found(it) } ?: RaLookup.NoSet },
+            onFailure = { RaLookup.Failed("RetroAchievements: ${it.message ?: it.javaClass.simpleName}") },
+        )
+        (_ra.value as? RaLookup.Found)?.let { found ->
+            if (_raProgress.value?.game?.id != found.match.game.id) {
+                _raProgress.value = runCatching { ra.progress(found.match.game.id) }.getOrNull()
+            }
+        }
+    }
+
+    /** The set matched by name is another game: stop linking it to this hack (synced), then look again. */
+    fun unlinkRaSet() {
+        val match = (_ra.value as? RaLookup.Found)?.match?.takeIf { it.kind == RaMatchKind.NAME } ?: return
+        viewModelScope.launch {
+            app.backlog.unlinkRaSet(hackId, match.game.id)
+            lookup()
+        }
+    }
+
+    /** Undoes [unlinkRaSet], so name matching links those sets again. */
+    fun relinkRaSets() {
+        viewModelScope.launch {
+            app.backlog.relinkRaSets(hackId)
+            lookup()
+        }
     }
 
     private val _patch = MutableStateFlow<PatchUiState>(PatchUiState.Idle)
