@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.capivaraec.smwc.app.SmwcApplication
 import com.capivaraec.smwc.core.backlog.BacklogEntry
 import com.capivaraec.smwc.core.backlog.BacklogStatus
+import com.capivaraec.smwc.core.backlog.matchesSearch
 import com.capivaraec.smwc.core.ra.AchievementFilter
 import com.capivaraec.smwc.core.ra.AchievementSort
 import com.capivaraec.smwc.core.ra.RaCredentials
@@ -113,13 +114,18 @@ data class AchievementsUiState(
     val error: String? = null,
     val sort: AchievementSort = AchievementSort.DEFAULT,
     val filter: AchievementFilter = AchievementFilter(),
-)
+    /** While not blank, [rows] are the hacks matching it and [filter] is set aside. */
+    val query: String = "",
+) {
+    val searching: Boolean get() = query.isNotBlank()
+}
 
 /** For the Achievements tab: backlog hacks with a set, and the user's progress in each. */
 class AchievementsViewModel(private val app: SmwcApplication) : ViewModel() {
     private val progress = MutableStateFlow<Map<Long, Result<RaProgress>>>(emptyMap())
     private val _error = MutableStateFlow<String?>(null)
     private val matches = raMatches(app)
+    private val query = MutableStateFlow("")
 
     val state: StateFlow<AchievementsUiState> =
         combine(app.backlog.state, matches, progress, _error, app.raCredentials.credentials) { doc, matchesById, progressByGame, error, credentials ->
@@ -144,13 +150,16 @@ class AchievementsViewModel(private val app: SmwcApplication) : ViewModel() {
                 earnedPoints = rows.distinctBy { it.match.game.id }.sumOf { it.progress?.earnedPoints ?: 0 },
                 error = error,
             )
-        }.combine(combine(app.preferences.achievementSort, app.preferences.achievementFilter, ::Pair)) { state, (sort, filter) ->
+        }.combine(combine(app.preferences.achievementSort, app.preferences.achievementFilter, query, ::Triple)) { state, (sort, filter, search) ->
+            // A search sets the filters aside.
+            val searching = search.isNotBlank()
             state.copy(
                 rows = state.rows
-                    .filter { filter.matches(it.entry.status, it.progress) }
+                    .filter { if (searching) it.entry.matchesSearch(search) else filter.matches(it.entry.status, it.progress) }
                     .sortedWith(sort.comparator({ it.entry.name }, { it.match.game })),
                 sort = sort,
                 filter = filter,
+                query = search,
             )
         }.combine(app.preferences.dismissedCompletionSuggestions) { state, dismissed ->
             state.copy(rows = state.rows.map { it.copy(suggestCompleting = suggestCompleting(it.entry, it.progress, dismissed)) })
@@ -174,6 +183,7 @@ class AchievementsViewModel(private val app: SmwcApplication) : ViewModel() {
 
     fun setSort(sort: AchievementSort) = app.preferences.setAchievementSort(sort)
     fun setFilter(filter: AchievementFilter) = app.preferences.setAchievementFilter(filter)
+    fun setQuery(query: String) { this.query.value = query }
 
     private val _refreshing = MutableStateFlow(false)
     val refreshing: StateFlow<Boolean> = _refreshing

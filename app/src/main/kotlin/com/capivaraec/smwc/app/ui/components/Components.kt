@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -149,16 +150,30 @@ fun SegmentedTabs(labels: List<String>, selected: Int, onSelect: (Int) -> Unit, 
     }
 }
 
-/** An outlined pill button for list controls (sort, filters); highlighted when [active]. */
+/**
+ * An outlined pill button for list controls (sort, filters); highlighted when [active], greyed
+ * out when not [enabled].
+ */
 @Composable
-fun ControlChip(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null, active: Boolean = false) {
+fun ControlChip(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    active: Boolean = false,
+    enabled: Boolean = true,
+) {
     val color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     Surface(
         onClick = onClick,
+        enabled = enabled,
         shape = RoundedCornerShape(18.dp),
         color = if (active) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
         contentColor = color,
-        modifier = modifier.height(36.dp).border(1.dp, if (active) color else MaterialTheme.colorScheme.outline, RoundedCornerShape(18.dp)),
+        modifier = modifier
+            .alpha(if (enabled) 1f else 0.38f)
+            .height(36.dp)
+            .border(1.dp, if (active) color else MaterialTheme.colorScheme.outline, RoundedCornerShape(18.dp)),
     ) {
         Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             if (icon != null) Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))

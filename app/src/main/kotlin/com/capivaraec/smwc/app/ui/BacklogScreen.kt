@@ -78,6 +78,7 @@ import com.capivaraec.smwc.core.backlog.BacklogFilter
 import com.capivaraec.smwc.core.backlog.BacklogSort
 import com.capivaraec.smwc.core.backlog.BacklogStatus
 import com.capivaraec.smwc.core.backlog.RaSetFilter
+import com.capivaraec.smwc.core.backlog.matchesSearch
 import com.capivaraec.smwc.core.backlog.releaseYear
 import com.capivaraec.smwc.core.model.Difficulty
 import com.capivaraec.smwc.core.model.lengthDisplay
@@ -130,9 +131,15 @@ private fun BacklogList(app: SmwcApplication, sync: SyncViewModel, selectedId: L
     val status = BacklogStatus.entries[tab]
     // Hacks added by name have no details page; tapping them edits their notes instead.
     var notesFor by rememberSaveable { mutableStateOf<Long?>(null) }
-    // The RA filter only applies while an account is set up.
+    var query by rememberSaveable { mutableStateOf("") }
+    val searching = query.isNotBlank()
+    // The RA filter only applies while an account is set up. A search sets the filters aside.
     val activeFilter = if (raConfigured) filter else filter.copy(raSet = RaSetFilter.ANY)
-    val filtered = entries.filter { activeFilter.matches(it, hasRaSet = it.hackId in raMatches) }
+    val filtered = if (searching) {
+        entries.filter { it.matchesSearch(query) }
+    } else {
+        entries.filter { activeFilter.matches(it, hasRaSet = it.hackId in raMatches) }
+    }
     val shown = filtered.filter { it.status == status }
 
     entries.firstOrNull { it.hackId == notesFor }?.let { entry ->
@@ -155,6 +162,7 @@ private fun BacklogList(app: SmwcApplication, sync: SyncViewModel, selectedId: L
                 }
             }
             raError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+            ListSearchField(query, onQueryChange = { query = it }, placeholder = "Search by name or author")
             SegmentedTabs(
                 labels = BacklogStatus.entries.map { s -> "${s.label} (${filtered.count { it.status == s }})" },
                 selected = tab,
@@ -167,13 +175,14 @@ private fun BacklogList(app: SmwcApplication, sync: SyncViewModel, selectedId: L
                     if (activeFilter.isActive) "Filters · ${activeFilter.activeCount}" else "Filters",
                     onClick = { showFilters = true },
                     icon = Icons.Outlined.FilterAlt,
-                    active = activeFilter.isActive,
+                    active = activeFilter.isActive && !searching,
+                    enabled = !searching,
                 )
-                if (activeFilter.isActive) TextButton(onClick = { vm.setFilter(BacklogFilter()) }) { Text("Clear") }
+                if (activeFilter.isActive && !searching) TextButton(onClick = { vm.setFilter(BacklogFilter()) }) { Text("Clear") }
             }
         }
         val listState = rememberLazyListState()
-        ScrollToTopOnChange(listState, key = "${sorted.sort}|${activeFilter.hashCode()}")
+        ScrollToTopOnChange(listState, key = "${sorted.sort}|${activeFilter.hashCode()}|${query.trim()}")
         // Pull down to sync with Google Drive.
         PullToRefreshBox(isRefreshing = syncState.syncing, onRefresh = { sync.syncNow(manual = true) }, modifier = Modifier.fillMaxSize()) {
             LazyColumn(
@@ -186,6 +195,7 @@ private fun BacklogList(app: SmwcApplication, sync: SyncViewModel, selectedId: L
                     item {
                         EmptyState(
                             when {
+                                searching -> "No hacks match “${query.trim()}”."
                                 activeFilter.isActive && entries.any { it.status == status } -> "No hacks match the filters."
                                 status == BacklogStatus.BACKLOG -> "Your backlog is empty. Add hacks from Search."
                                 status == BacklogStatus.PLAYING -> "Not playing anything. Start a hack from your backlog."

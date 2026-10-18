@@ -136,7 +136,7 @@ private fun AchievementsList(
     val credentials by app.raCredentials.credentials.collectAsStateWithLifecycle()
     var showFilters by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
-    ScrollToTopOnChange(listState, key = "${state.sort}|${state.filter}")
+    ScrollToTopOnChange(listState, key = "${state.sort}|${state.filter}|${state.query.trim()}")
 
     if (showFilters) {
         AchievementFilterSheet(state.filter, onChange = vm::setFilter, onDismiss = { showFilters = false })
@@ -154,15 +154,17 @@ private fun AchievementsList(
                     StatTile("${state.masteredCount}", "mastered", Modifier.weight(1f), highlight = true)
                     StatTile("%,d".format(state.earnedPoints), "points", Modifier.weight(1f))
                 }
+                ListSearchField(state.query, onQueryChange = vm::setQuery, placeholder = "Search by name or author")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SortMenu(state.sort, AchievementSort.entries, AchievementSort::label, onSelect = vm::setSort)
                     ControlChip(
                         if (state.filter.isActive) "Filters · ${state.filter.activeCount}" else "Filters",
                         onClick = { showFilters = true },
                         icon = Icons.Outlined.FilterAlt,
-                        active = state.filter.isActive,
+                        active = state.filter.isActive && !state.searching,
+                        enabled = !state.searching,
                     )
-                    if (state.filter.isActive) TextButton(onClick = { vm.setFilter(AchievementFilter()) }) { Text("Clear") }
+                    if (state.filter.isActive && !state.searching) TextButton(onClick = { vm.setFilter(AchievementFilter()) }) { Text("Clear") }
                 }
             }
         }
@@ -184,7 +186,7 @@ private fun AchievementsList(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     if (state.rows.isEmpty()) {
-                        item { Text("No hacks match the filters.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 24.dp)) }
+                        item { Text(if (state.searching) "No hacks match “${state.query.trim()}”." else "No hacks match the filters.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 24.dp)) }
                     }
                     items(state.rows.filter { it.suggestCompleting }, key = { "suggest-${it.entry.hackId}" }) { row ->
                         CompletionSuggestion(
