@@ -85,6 +85,7 @@ import com.capivaraec.smwc.core.model.Difficulty
 import com.capivaraec.smwc.core.model.lengthDisplay
 import com.capivaraec.smwc.core.ra.RaMatch
 import com.capivaraec.smwc.core.ra.RaMatchKind
+import com.capivaraec.smwc.core.ra.RaTimes
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -123,6 +124,7 @@ private fun BacklogList(app: SmwcApplication, sync: SyncViewModel, selectedId: L
     val sort by vm.sort.collectAsStateWithLifecycle()
     val raVm: BacklogRaViewModel = viewModel { BacklogRaViewModel(app) }
     val raMatches by raVm.matches.collectAsStateWithLifecycle()
+    val raTimes by vm.times.collectAsStateWithLifecycle()
     val raError by raVm.error.collectAsStateWithLifecycle()
     val syncState by sync.state.collectAsStateWithLifecycle()
     val filter by vm.filter.collectAsStateWithLifecycle()
@@ -219,6 +221,7 @@ private fun BacklogList(app: SmwcApplication, sync: SyncViewModel, selectedId: L
                     BacklogCard(
                         entry = entry,
                         raMatch = match,
+                        raTimes = match?.let { raTimes[it.game.id] },
                         selected = entry.hackId == selectedId,
                         onClick = { if (entry.custom) notesFor = entry.hackId else onOpenHack(entry.hackId) },
                         onStatus = { vm.setStatus(entry.hackId, it) },
@@ -261,11 +264,12 @@ private fun EmptyState(text: String) {
     )
 }
 
-/** One hack in the lists: screenshot, name, chips, notes, and the actions for its list. */
+/** One hack in the lists: screenshot, name, chips, RetroAchievements times, notes, and the actions for its list. */
 @Composable
 private fun BacklogCard(
     entry: BacklogEntry,
     raMatch: RaMatch?,
+    raTimes: RaTimes?,
     selected: Boolean,
     onClick: () -> Unit,
     onStatus: (BacklogStatus) -> Unit,
@@ -297,6 +301,9 @@ private fun BacklogCard(
                         entry.exits?.let { lengthDisplay(it.toString())?.let { text -> InfoChip(text) } }
                         entry.releaseYear()?.let { InfoChip(it.toString()) }
                         raMatch?.let { RaChip(it.chipText()) }
+                    }
+                    raTimes?.summary()?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     if (entry.status == BacklogStatus.COMPLETED) {
                         entry.completedAt?.let {

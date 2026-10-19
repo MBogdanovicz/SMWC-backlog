@@ -23,6 +23,7 @@ import com.capivaraec.smwc.core.patch.PatchedRom
 import com.capivaraec.smwc.core.ra.RaMatchKind
 import kotlinx.coroutines.flow.collectLatest
 import com.capivaraec.smwc.core.ra.RaProgress
+import com.capivaraec.smwc.core.ra.RaTimes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -373,13 +374,19 @@ class BacklogViewModel(private val app: SmwcApplication) : ViewModel() {
         .map { it != null }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), app.raCredentials.credentials.value != null)
 
+    /** Beat / master times of the sets loaded so far, by RetroAchievements game id. */
+    val times: StateFlow<Map<Long, RaTimes>> = app.retroAchievements.loadedTimes
+
     init {
         viewModelScope.launch { app.backlog.load() }
-        // Sorting by time to master needs the times of every hack that has a set.
+        // Backlog and Playing cards show their set's times; sorting by time to master needs every set's.
         viewModelScope.launch {
-            combine(sort, raMatches(app), ::Pair).collectLatest { (sort, matches) ->
-                if (!sort.byMasterTime || matches == null) return@collectLatest
-                for (id in matches.values.map { it.game.id }.distinct()) runCatching { app.retroAchievements.times(id) }
+            combine(sort, raMatches(app), app.backlog.state, ::Triple).collectLatest { (sort, matches, doc) ->
+                if (matches == null) return@collectLatest
+                val gameIds = matches
+                    .filter { (hackId, _) -> sort.byMasterTime || doc.entry(hackId)?.status != BacklogStatus.COMPLETED }
+                    .values.map { it.game.id }.distinct()
+                for (id in gameIds) runCatching { app.retroAchievements.times(id) }
             }
         }
     }
