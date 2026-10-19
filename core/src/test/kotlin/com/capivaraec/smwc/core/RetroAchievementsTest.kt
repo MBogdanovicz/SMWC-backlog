@@ -10,6 +10,7 @@ import com.capivaraec.smwc.core.ra.RaListCache
 import com.capivaraec.smwc.core.ra.RaMatchKind
 import com.capivaraec.smwc.core.ra.RaParser
 import com.capivaraec.smwc.core.ra.RaProgressCache
+import com.capivaraec.smwc.core.ra.RaTimes
 import com.capivaraec.smwc.core.ra.RetroAchievementsClient
 import com.capivaraec.smwc.core.ra.RetroAchievementsRepository
 import io.ktor.client.HttpClient
@@ -217,6 +218,25 @@ class RetroAchievementsTest {
         val online = RetroAchievementsClient(HttpClient(MockEngine { respond("[]") }), { RaCredentials("me", "KEY") })
         assertEquals(0, RetroAchievementsRepository(online, cache, MemoryProgressCache(), now = { Long.MAX_VALUE }).index().size)
         assertEquals("[]", cache.stored?.text)
+    }
+
+    private val progression = """{"MedianTimeToBeat":3600,"MedianTimeToBeatHardcore":7200,"MedianTimeToMaster":36000}"""
+
+    @Test
+    fun timesAreTheMediansUntilTheUserFinishes() {
+        val none = RaParser.parseTimes(progression, null, 5)
+        assertEquals(RaTimes(7200, true, 36000, true), none)
+
+        val player = """
+            {"data":[{"attributes":{"timeToBeatHardcoreSeconds":5400}}],
+             "included":[
+               {"type":"player-achievement-sets","attributes":{"completedHardcoreAt":"2025-01-01","timeTakenHardcoreSeconds":999,"setContext":[{"gameId":9,"type":"bonus"}]}},
+               {"type":"player-achievement-sets","attributes":{"completedHardcoreAt":"2025-01-01","timeTakenHardcoreSeconds":20000,"setContext":[{"gameId":5,"type":"core"}]}}]}
+        """
+        assertEquals(RaTimes(5400, false, 20000, false), RaParser.parseTimes(progression, player, 5))
+
+        val unfinished = """{"data":[{"attributes":{}}],"included":[{"type":"player-achievement-sets","attributes":{"timeTakenHardcoreSeconds":500,"setContext":[{"gameId":5,"type":"core"}]}}]}"""
+        assertEquals(RaTimes(7200, true, 36000, true), RaParser.parseTimes(progression, unfinished, 5))
     }
 
     private class MemoryProgressCache : RaProgressCache {

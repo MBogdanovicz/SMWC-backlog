@@ -49,6 +49,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -127,7 +128,15 @@ private fun BacklogList(app: SmwcApplication, sync: SyncViewModel, selectedId: L
     val filter by vm.filter.collectAsStateWithLifecycle()
     val raConfigured by vm.raConfigured.collectAsStateWithLifecycle()
     var showFilters by rememberSaveable { mutableStateOf(false) }
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    // Opens on Playing when something is being played, else on Backlog; then it stays where the user left it.
+    var chosenTab by rememberSaveable { mutableStateOf(app.backlogTab) }
+    val tab = chosenTab ?: 0
+    val setTab = { index: Int -> chosenTab = index; app.backlogTab = index }
+    LaunchedEffect(entries.isNotEmpty()) {
+        if (chosenTab == null && entries.isNotEmpty()) {
+            setTab(if (entries.any { it.status == BacklogStatus.PLAYING }) BacklogStatus.PLAYING.ordinal else BacklogStatus.BACKLOG.ordinal)
+        }
+    }
     val status = BacklogStatus.entries[tab]
     // Hacks added by name have no details page; tapping them edits their notes instead.
     var notesFor by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -166,7 +175,7 @@ private fun BacklogList(app: SmwcApplication, sync: SyncViewModel, selectedId: L
             SegmentedTabs(
                 labels = BacklogStatus.entries.map { s -> "${s.label} (${filtered.count { it.status == s }})" },
                 selected = tab,
-                onSelect = { tab = it },
+                onSelect = setTab,
             )
             // Wraps on narrow screens, since the sort label can be long.
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

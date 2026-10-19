@@ -35,6 +35,14 @@ class AchievementsListTest {
         assertEquals(listOf("Échec", "apple", "banana", "cherry"), order(AchievementSort.POINTS_MOST_FIRST))
     }
 
+    @Test
+    fun timeToMasterSortsMissingLast() {
+        val seconds = mapOf("banana" to 300L, "apple" to 100L, "Échec" to 200L)
+        fun order(sort: AchievementSort) = items.sortedWith(sort.comparator(Item::name, Item::game) { seconds[it.name] }).map { it.name }
+        assertEquals(listOf("apple", "Échec", "banana", "cherry"), order(AchievementSort.TIME_TO_MASTER_SHORTEST_FIRST))
+        assertEquals(listOf("banana", "Échec", "apple", "cherry"), order(AchievementSort.TIME_TO_MASTER_LONGEST_FIRST))
+    }
+
     private fun progress(hardcore: Int, softcoreOnly: Int, locked: Int): RaProgress {
         var id = 0L
         fun a(soft: String?, hard: String?) = RaAchievement(id++, "A$id", null, 5, null, soft, hard)

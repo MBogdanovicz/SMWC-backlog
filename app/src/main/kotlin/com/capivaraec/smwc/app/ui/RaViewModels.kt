@@ -12,6 +12,7 @@ import com.capivaraec.smwc.core.ra.AchievementSort
 import com.capivaraec.smwc.core.ra.RaCredentials
 import com.capivaraec.smwc.core.ra.RaMatch
 import com.capivaraec.smwc.core.ra.RaProgress
+import com.capivaraec.smwc.core.ra.RaTimes
 import com.capivaraec.smwc.core.ra.mastered
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -60,7 +61,7 @@ private fun ViewModel.loadRaIndexWhenConfigured(app: SmwcApplication, onError: (
  * Backlog entries (both statuses) that have a set, matched by ROM hash when known, else by
  * name. Null while RetroAchievements is not set up or the hack list is not loaded.
  */
-private fun raMatches(app: SmwcApplication): Flow<Map<Long, RaMatch>?> = combine(
+internal fun raMatches(app: SmwcApplication): Flow<Map<Long, RaMatch>?> = combine(
     app.backlog.state,
     app.retroAchievements.loadedIndex,
     app.romHashes.hashes,
@@ -92,6 +93,8 @@ data class AchievementRow(
     /** Null while loading, or when loading failed (see [progressError]). */
     val progress: RaProgress? = null,
     val progressError: String? = null,
+    /** Beat / master times; null until loaded. */
+    val times: RaTimes? = null,
     /** RetroAchievements says the user finished it, but it is not in the completed list. */
     val suggestCompleting: Boolean = false,
 )
@@ -128,7 +131,7 @@ class AchievementsViewModel(private val app: SmwcApplication) : ViewModel() {
     private val query = MutableStateFlow("")
 
     val state: StateFlow<AchievementsUiState> =
-        combine(app.backlog.state, matches, progress, _error, app.raCredentials.credentials) { doc, matchesById, progressByGame, error, credentials ->
+        combine(app.backlog.state, matches, combine(progress, app.retroAchievements.loadedTimes, ::Pair), _error, app.raCredentials.credentials) { doc, matchesById, (progressByGame, timesByGame), error, credentials ->
             if (credentials == null) return@combine AchievementsUiState(configured = false, loading = false)
             val rows = doc.visible.mapNotNull { entry ->
                 val match = matchesById?.get(entry.hackId) ?: return@mapNotNull null
@@ -138,6 +141,7 @@ class AchievementsViewModel(private val app: SmwcApplication) : ViewModel() {
                     match = match,
                     progress = result?.getOrNull(),
                     progressError = result?.exceptionOrNull()?.raMessage(),
+                    times = timesByGame[match.game.id],
                 )
             }
             AchievementsUiState(
@@ -156,7 +160,7 @@ class AchievementsViewModel(private val app: SmwcApplication) : ViewModel() {
             state.copy(
                 rows = state.rows
                     .filter { if (searching) it.entry.matchesSearch(search) else filter.matches(it.entry.status, it.progress) }
-                    .sortedWith(sort.comparator({ it.entry.name }, { it.match.game })),
+                    .sortedWith(sort.comparator({ it.entry.name }, { it.match.game }, { it.times?.masterSeconds })),
                 sort = sort,
                 filter = filter,
                 query = search,
@@ -207,6 +211,8 @@ class AchievementsViewModel(private val app: SmwcApplication) : ViewModel() {
             val result = runCatching { app.retroAchievements.progress(id, refresh) }
             result.exceptionOrNull()?.let { Log.w(TAG, "Could not load progress for game $id", it) }
             progress.update { it + (id to result) }
+            // The times are a nicety: a failure only leaves them out.
+            runCatching { app.retroAchievements.times(id, refresh) }.exceptionOrNull()?.let { Log.w(TAG, "Could not load times for game $id", it) }
         }
     }
 }

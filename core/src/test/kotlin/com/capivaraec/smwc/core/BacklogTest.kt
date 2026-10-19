@@ -130,6 +130,11 @@ class BacklogTest {
         assertEquals(listOf(1L, 3L, 2L, custom), order(BacklogSort.RELEASED_NEWEST_FIRST))
         assertEquals(listOf(3L, 1L, 2L, custom), order(BacklogSort.EXITS_FEWEST_FIRST))
         assertEquals(listOf(2L, 1L, 3L, custom), order(BacklogSort.EXITS_MOST_FIRST))
+
+        val seconds = mapOf(1L to 500L, 3L to 100L)
+        fun byTime(sort: BacklogSort) = doc.visible.sortedWith(sort) { seconds[it.hackId] }.map { it.hackId }
+        assertEquals(listOf(3L, 1L, 2L, custom), byTime(BacklogSort.TIME_TO_MASTER_SHORTEST_FIRST))
+        assertEquals(listOf(1L, 3L, 2L, custom), byTime(BacklogSort.TIME_TO_MASTER_LONGEST_FIRST))
     }
 
     @Test

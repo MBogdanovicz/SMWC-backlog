@@ -12,10 +12,15 @@ enum class AchievementSort(val label: String) {
     ACHIEVEMENTS_MOST_FIRST("Achievements: most first"),
     POINTS_FEWEST_FIRST("Points: fewest first"),
     POINTS_MOST_FIRST("Points: most first"),
+    TIME_TO_MASTER_SHORTEST_FIRST("Time to master: shortest first"),
+    TIME_TO_MASTER_LONGEST_FIRST("Time to master: longest first"),
     ;
 
-    /** Orders items by their [game] and [name]; ties are broken by name. */
-    fun <T> comparator(name: (T) -> String, game: (T) -> RaGame): Comparator<T> {
+    /**
+     * Orders items by their [game] and [name]; ties are broken by name. [masterSeconds] is the
+     * time to master; items without it go last in both directions.
+     */
+    fun <T> comparator(name: (T) -> String, game: (T) -> RaGame, masterSeconds: (T) -> Long? = { null }): Comparator<T> {
         val byName = Comparator<T> { a, b -> nameOrder.compare(name(a), name(b)) }
         return when (this) {
             NAME_A_TO_Z -> byName
@@ -24,6 +29,8 @@ enum class AchievementSort(val label: String) {
             ACHIEVEMENTS_MOST_FIRST -> compareByDescending<T> { game(it).achievements }.then(byName)
             POINTS_FEWEST_FIRST -> compareBy<T> { game(it).points }.then(byName)
             POINTS_MOST_FIRST -> compareByDescending<T> { game(it).points }.then(byName)
+            TIME_TO_MASTER_SHORTEST_FIRST -> compareBy<T> { masterSeconds(it) == null }.thenBy { masterSeconds(it) }.then(byName)
+            TIME_TO_MASTER_LONGEST_FIRST -> compareBy<T> { masterSeconds(it) == null }.thenByDescending { masterSeconds(it) }.then(byName)
         }
     }
 

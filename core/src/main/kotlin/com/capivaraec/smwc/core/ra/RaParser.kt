@@ -40,6 +40,40 @@ object RaParser {
     fun parseUserName(body: String): String? =
         (runCatching { json.parseToJsonElement(body) }.getOrNull() as? JsonObject)?.string("User")
 
+    /**
+     * [progression] is `API_GetGameProgression.php` (medians, in seconds); [player] is the v2
+     * `users/{user}/player-games` document with its achievement sets, or null if not available.
+     * The user's own beat time (hardcore first) and mastery time win over the medians; a softcore
+     * completion stands in for a mastery.
+     */
+    fun parseTimes(progression: String, player: String?, gameId: Long): RaTimes {
+        val medians = json.parseToJsonElement(progression) as? JsonObject ?: throw RaApiException("Unexpected progression response")
+        medians.errorMessage()?.let { throw RaApiException(it) }
+        val document = player?.let { runCatching { json.parseToJsonElement(it) as? JsonObject }.getOrNull() }
+        val attributes = ((document?.field("data") as? JsonArray)?.firstOrNull() as? JsonObject)?.field("attributes") as? JsonObject
+        val sets = (document?.field("included") as? JsonArray).orEmpty()
+            .mapNotNull { it as? JsonObject }
+            .filter { it.string("type") == "player-achievement-sets" }
+            .mapNotNull { it.field("attributes") as? JsonObject }
+        // The game's own set, not a subset or bonus set attached to it.
+        val core = sets.firstOrNull { set ->
+            (set.field("setContext") as? JsonArray).orEmpty().any {
+                (it as? JsonObject)?.let { c -> c.string("type") == "core" && c.long("gameId") == gameId } == true
+            }
+        } ?: sets.singleOrNull()
+        val ownBeat = attributes?.long("timeToBeatHardcoreSeconds") ?: attributes?.long("timeToBeatSeconds")
+        val ownMaster = core?.takeIf { it.string("completedHardcoreAt") != null }?.long("timeTakenHardcoreSeconds")
+            ?: core?.takeIf { it.string("completedAt") != null }?.long("timeTakenSeconds")
+        val beat = ownBeat ?: medians.long("MedianTimeToBeatHardcore") ?: medians.long("MedianTimeToBeat")
+        val master = ownMaster ?: medians.long("MedianTimeToMaster") ?: medians.long("MedianTimeToComplete")
+        return RaTimes(
+            beatSeconds = beat?.takeIf { it > 0 },
+            beatTypical = ownBeat == null,
+            masterSeconds = master?.takeIf { it > 0 },
+            masterTypical = ownMaster == null,
+        )
+    }
+
     private fun JsonObject.toGame(): RaGame? {
         val id = long("ID") ?: return null
         val title = string("Title") ?: return null

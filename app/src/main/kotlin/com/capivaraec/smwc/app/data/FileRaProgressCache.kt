@@ -7,8 +7,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /** Keeps the user's progress in each set as `ra_progress/<gameId>.json`; the file date is its age. */
-class FileRaProgressCache(dir: File) : RaProgressCache {
-    private val folder = File(dir, "ra_progress")
+class FileRaProgressCache(dir: File, name: String = "ra_progress") : RaProgressCache {
+    private val folder = File(dir, name)
 
     private fun file(gameId: Long) = File(folder, "$gameId.json")
 

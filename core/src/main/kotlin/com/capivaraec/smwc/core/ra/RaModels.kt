@@ -47,6 +47,17 @@ data class RaProgress(
     val earnedPoints: Int get() = achievements.filter { it.earned }.sumOf { it.points }
 }
 
+/**
+ * How long a set takes, in seconds. The user's own time when they beat / mastered it, else what
+ * players typically take (RetroAchievements' median, the `*Typical` flag is then true).
+ */
+data class RaTimes(
+    val beatSeconds: Long?,
+    val beatTypical: Boolean,
+    val masterSeconds: Long?,
+    val masterTypical: Boolean,
+)
+
 private val FINISHED_AWARDS = setOf("beaten-softcore", "beaten-hardcore", "completed", "mastered")
 
 class RaApiException(message: String) : Exception(message)

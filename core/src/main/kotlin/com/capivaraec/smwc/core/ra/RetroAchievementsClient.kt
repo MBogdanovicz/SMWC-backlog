@@ -3,11 +3,19 @@ package com.capivaraec.smwc.core.ra
 import io.ktor.client.HttpClient
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.statement.bodyAsText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -24,6 +32,7 @@ class RetroAchievementsClient(
     private val http: HttpClient,
     private val credentials: suspend () -> RaCredentials?,
     private val baseUrl: String = "https://retroachievements.org/API",
+    private val v2Url: String = "https://api.retroachievements.org/v2",
 ) {
     /** Every SNES game with achievements and its supported ROM hashes, as raw JSON (it is cached as is). */
     suspend fun snesGameListJson(): String = get("API_GetGameList.php", requireCredentials()) {
@@ -42,6 +51,24 @@ class RetroAchievementsClient(
             parameter("u", credentials.username)
             parameter("a", 1) // award info (beaten/completed/mastered)
         }
+    }
+
+    /** Median times to beat / master a game, as raw JSON. */
+    suspend fun progressionJson(gameId: Long): String = get("API_GetGameProgression.php", requireCredentials()) {
+        parameter("i", gameId)
+    }
+
+    /** The user's own playtime and beat / mastery times for a game (v2 API), as raw JSON. */
+    suspend fun playerGameJson(gameId: Long): String {
+        val credentials = requireCredentials()
+        val response = http.get("$v2Url/users/${credentials.username}/player-games") {
+            header("X-API-Key", credentials.apiKey)
+            header("Accept", "application/vnd.api+json")
+            parameter("filter[gameId]", gameId)
+            parameter("include", "playerAchievementSets")
+        }
+        if (response.status.value !in 200..299) throw RaApiException("RetroAchievements returned HTTP ${response.status.value}")
+        return response.bodyAsText()
     }
 
     /**
@@ -87,6 +114,12 @@ interface RaProgressCache {
     suspend fun clear()
 }
 
+private object NoRaCache : RaProgressCache {
+    override suspend fun read(gameId: Long): CachedText? = null
+    override suspend fun write(gameId: Long, text: String) = Unit
+    override suspend fun clear() = Unit
+}
+
 /** [savedAt] is in epoch millis. */
 data class CachedText(val savedAt: Long, val text: String)
 
@@ -100,6 +133,7 @@ class RetroAchievementsRepository(
     private val client: RetroAchievementsClient,
     private val cache: RaListCache,
     private val progressDiskCache: RaProgressCache,
+    private val timesDiskCache: RaProgressCache = NoRaCache,
     private val now: () -> Long = System::currentTimeMillis,
     private val maxAgeMillis: Long = 7 * DAY_MILLIS,
     private val progressMaxAgeMillis: Long = DAY_MILLIS,
@@ -109,6 +143,13 @@ class RetroAchievementsRepository(
 
     /** Null until [index] has loaded once. */
     val loadedIndex: StateFlow<RaHackIndex?> = _index.asStateFlow()
+
+    private val timesLock = Mutex()
+    private val timesCache = HashMap<Long, Pair<Long, RaTimes>>()
+    private val _times = MutableStateFlow<Map<Long, RaTimes>>(emptyMap())
+
+    /** Times of the sets loaded so far (see [times]), by game id. */
+    val loadedTimes: StateFlow<Map<Long, RaTimes>> = _times.asStateFlow()
 
     private val progressLock = Mutex()
     private val progressCache = HashMap<Long, Pair<Long, RaProgress>>() // gameId -> (savedAt, progress)
@@ -132,9 +173,53 @@ class RetroAchievementsRepository(
         index().find(hackName, romMd5s, unlinkedGameIds)
 
     /** Forgets the user's progress, e.g. after switching to another account. */
-    suspend fun clearProgress() = progressLock.withLock {
-        progressCache.clear()
-        progressDiskCache.clear()
+    suspend fun clearProgress() {
+        progressLock.withLock {
+            progressCache.clear()
+            progressDiskCache.clear()
+        }
+        timesLock.withLock {
+            timesCache.clear()
+            timesDiskCache.clear()
+            _times.value = emptyMap()
+        }
+    }
+
+    /**
+     * How long a set takes: the user's own beat / mastery times where they have them, else the
+     * players' medians. Cached like [progress]; the answer also lands in [loadedTimes].
+     */
+    suspend fun times(gameId: Long, refresh: Boolean = false): RaTimes = timesLock.withLock {
+        val fresh = { savedAt: Long -> now() - savedAt < progressMaxAgeMillis }
+        val parse = { text: String ->
+            val root = Json.parseToJsonElement(text).jsonObject
+            RaParser.parseTimes(root.getValue("progression").jsonPrimitive.content, root["player"]?.jsonPrimitive?.contentOrNull, gameId)
+        }
+        val disk = timesDiskCache.read(gameId)
+        val times = if (!refresh && timesCache[gameId]?.takeIf { fresh(it.first) } != null) {
+            timesCache.getValue(gameId).second
+        } else if (!refresh && disk != null && fresh(disk.savedAt) && runCatching { parse(disk.text) }.isSuccess) {
+            parse(disk.text).also { timesCache[gameId] = disk.savedAt to it }
+        } else {
+            try {
+                val progression = client.progressionJson(gameId)
+                // Without the user's own times the medians still answer.
+                val player = runCatching { client.playerGameJson(gameId) }.getOrNull()
+                val text = buildJsonObject {
+                    put("progression", progression)
+                    player?.let { put("player", it) }
+                }.toString()
+                parse(text).also {
+                    timesDiskCache.write(gameId, text)
+                    timesCache[gameId] = now() to it
+                }
+            } catch (e: Exception) {
+                if (refresh) throw e
+                disk?.let { runCatching { parse(it.text) }.getOrNull() } ?: throw e
+            }
+        }
+        _times.update { it + (gameId to times) }
+        times
     }
 
     /**

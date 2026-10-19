@@ -13,7 +13,11 @@ enum class BacklogSort(val label: String) {
     RELEASED_NEWEST_FIRST("Released: newest first"),
     EXITS_FEWEST_FIRST("Exits: fewest first"),
     EXITS_MOST_FIRST("Exits: most first"),
+    TIME_TO_MASTER_SHORTEST_FIRST("Time to master: shortest first"),
+    TIME_TO_MASTER_LONGEST_FIRST("Time to master: longest first"),
     ;
+
+    val byMasterTime: Boolean get() = this == TIME_TO_MASTER_SHORTEST_FIRST || this == TIME_TO_MASTER_LONGEST_FIRST
 
     companion object {
         val DEFAULT = ADDED_OLDEST_FIRST
@@ -23,7 +27,8 @@ enum class BacklogSort(val label: String) {
 /** Alphabetical, ignoring case and accents ("Échec" sorts with "E"). */
 private val nameOrder = Collator.getInstance(Locale.ROOT).apply { strength = Collator.PRIMARY }
 
-fun List<BacklogEntry>.sortedWith(sort: BacklogSort): List<BacklogEntry> {
+/** [masterSeconds] is the time to master a hack (from RetroAchievements), for the time sorts. */
+fun List<BacklogEntry>.sortedWith(sort: BacklogSort, masterSeconds: (BacklogEntry) -> Long? = { null }): List<BacklogEntry> {
     val byAdded = compareBy<BacklogEntry> { it.addedAt }
     val byName = Comparator<BacklogEntry> { a, b -> nameOrder.compare(a.name, b.name) }
     // Missing values sort last in both directions; ties keep the order they were added in.
@@ -40,6 +45,8 @@ fun List<BacklogEntry>.sortedWith(sort: BacklogSort): List<BacklogEntry> {
         BacklogSort.RELEASED_NEWEST_FIRST -> by(descending = true) { it.acceptedAt }
         BacklogSort.EXITS_FEWEST_FIRST -> by(descending = false) { it.exits }
         BacklogSort.EXITS_MOST_FIRST -> by(descending = true) { it.exits }
+        BacklogSort.TIME_TO_MASTER_SHORTEST_FIRST -> by(descending = false, masterSeconds)
+        BacklogSort.TIME_TO_MASTER_LONGEST_FIRST -> by(descending = true, masterSeconds)
     }
     return sortedWith(comparator)
 }

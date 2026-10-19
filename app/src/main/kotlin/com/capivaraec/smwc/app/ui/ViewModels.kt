@@ -21,6 +21,7 @@ import com.capivaraec.smwc.core.model.HackDetail
 import com.capivaraec.smwc.core.model.HackSummary
 import com.capivaraec.smwc.core.patch.PatchedRom
 import com.capivaraec.smwc.core.ra.RaMatchKind
+import kotlinx.coroutines.flow.collectLatest
 import com.capivaraec.smwc.core.ra.RaProgress
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -356,7 +357,10 @@ class BacklogViewModel(private val app: SmwcApplication) : ViewModel() {
     val sort: StateFlow<BacklogSort> = app.preferences.backlogSort
 
     /** The entries with the order they are sorted in, so the screen knows when a new order has arrived. */
-    val entries: StateFlow<SortedEntries> = combine(app.backlog.state, sort) { doc, sort -> SortedEntries(sort, doc.visible.sortedWith(sort)) }
+    val entries: StateFlow<SortedEntries> = combine(app.backlog.state, sort, raMatches(app), app.retroAchievements.loadedTimes) { doc, sort, matches, times ->
+        val masterSeconds = { entry: BacklogEntry -> matches?.get(entry.hackId)?.let { times[it.game.id] }?.masterSeconds }
+        SortedEntries(sort, doc.visible.sortedWith(sort, masterSeconds))
+    }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SortedEntries(sort.value, emptyList()))
 
     fun setSort(sort: BacklogSort) = app.preferences.setBacklogSort(sort)
@@ -371,6 +375,13 @@ class BacklogViewModel(private val app: SmwcApplication) : ViewModel() {
 
     init {
         viewModelScope.launch { app.backlog.load() }
+        // Sorting by time to master needs the times of every hack that has a set.
+        viewModelScope.launch {
+            combine(sort, raMatches(app), ::Pair).collectLatest { (sort, matches) ->
+                if (!sort.byMasterTime || matches == null) return@collectLatest
+                for (id in matches.values.map { it.game.id }.distinct()) runCatching { app.retroAchievements.times(id) }
+            }
+        }
     }
 
     fun setStatus(id: Long, status: BacklogStatus) = viewModelScope.launch { app.backlog.setStatus(id, status) }

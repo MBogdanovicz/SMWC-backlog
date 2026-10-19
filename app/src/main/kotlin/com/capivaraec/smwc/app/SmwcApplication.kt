@@ -50,13 +50,16 @@ class SmwcApplication : Application() {
     /** RetroAchievements user name and API key, entered in the Achievements tab; null until then. */
     val raCredentials by lazy { RaCredentialsStore(this) }
     val raClient by lazy { RetroAchievementsClient(http, credentials = { raCredentials.credentials.value }) }
-    val retroAchievements by lazy { RetroAchievementsRepository(raClient, FileRaListCache(cacheDir), FileRaProgressCache(cacheDir)) }
+    val retroAchievements by lazy { RetroAchievementsRepository(raClient, FileRaListCache(cacheDir), FileRaProgressCache(cacheDir), FileRaProgressCache(cacheDir, "ra_times")) }
 
     val cleanRom by lazy { CleanRomStore(this) }
 
     /** Downloads and applies hack patches; shared by RetroAchievements matching and patching. */
     val hackPatcher by lazy { HackPatcher(http, cleanRom) }
     val romHashes by lazy { RomHashRepository(FileRomHashStore(filesDir), hackPatcher) }
+
+    /** The My hacks tab (index into [BacklogStatus.entries]) last shown; null until the first choice. */
+    var backlogTab: Int? = null
 
     val preferences by lazy { AppPreferences(this) }
 
