@@ -32,6 +32,8 @@ class SmwcClient(
         page: Int = 1,
         sort: SortField = SortField.DATE,
         descending: Boolean = true,
+        /** Matches [query] against the authors' names instead of the hack names. */
+        byAuthor: Boolean = false,
     ): SearchPage {
         val body = get {
             parameter("a", "getsectionlist")
@@ -39,7 +41,7 @@ class SmwcClient(
             parameter("n", page)
             parameter("o", sort.apiValue)
             parameter("d", if (descending) "desc" else "asc")
-            if (query.isNotBlank()) parameter("f[name]", query.trim())
+            if (query.isNotBlank()) parameter(if (byAuthor) "f[author]" else "f[name]", query.trim())
         }
         return SmwcParser.parseSearchPage(body)
     }

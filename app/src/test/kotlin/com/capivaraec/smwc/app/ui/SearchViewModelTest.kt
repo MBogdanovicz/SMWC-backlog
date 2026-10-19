@@ -43,7 +43,7 @@ class SearchViewModelTest {
         override suspend fun write(document: BacklogDocument) { doc = document }
     }
 
-    /** A fake SMW Central: names match by substring, 2 per page; "" lists everything. */
+    /** A fake SMW Central: names match by substring, 2 per page; "" lists everything; no author matches. */
     private fun searchOver(names: List<String>, status: HttpStatusCode = HttpStatusCode.OK, requests: MutableList<String> = mutableListOf()) =
         HackSearch(
             SmwcClient(
@@ -51,7 +51,7 @@ class SearchViewModelTest {
                     val term = request.url.parameters["f[name]"].orEmpty()
                     val page = request.url.parameters["n"]!!.toInt()
                     requests += "$term#$page"
-                    val hits = names.filter { it.contains(term, ignoreCase = true) }
+                    val hits = if ("f[author]" in request.url.parameters) emptyList() else names.filter { it.contains(term, ignoreCase = true) }
                     val body = buildJsonObject {
                         put("current_page", page)
                         put("last_page", maxOf(1, (hits.size + 1) / 2))

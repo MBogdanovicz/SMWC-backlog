@@ -48,13 +48,17 @@ class HackSearchTest {
         assertEquals(listOf("Doomscroll", "scroll", "Doom"), SearchText.fallbackTerms("Doom scroll"))
     }
 
-    /** A fake SMW Central that matches names by plain substring, 2 hacks per page. */
-    private fun server(names: List<String>, requests: MutableList<String>) = SmwcClient(
+    /**
+     * A fake SMW Central that matches names (or, for author searches, the [authors] of each name)
+     * by plain substring, 2 hacks per page. Author requests are logged as "by:term#page".
+     */
+    private fun server(names: List<String>, requests: MutableList<String>, authors: Map<String, String> = emptyMap()) = SmwcClient(
         HttpClient(MockEngine { request ->
-            val term = request.url.parameters["f[name]"].orEmpty()
+            val author = request.url.parameters["f[author]"]
+            val term = author ?: request.url.parameters["f[name]"].orEmpty()
             val page = request.url.parameters["n"]!!.toInt()
-            requests += "$term#$page"
-            val hits = names.filter { it.contains(term, ignoreCase = true) }
+            requests += (if (author != null) "by:" else "") + "$term#$page"
+            val hits = names.filter { (if (author != null) authors[it].orEmpty() else it).contains(term, ignoreCase = true) }
             val lastPage = maxOf(1, (hits.size + 1) / 2)
             val body = buildJsonObject {
                 put("current_page", page)
@@ -77,7 +81,7 @@ class HackSearchTest {
 
         assertEquals(listOf("Kaizo World"), result.items.map { it.name })
         assertFalse(result.approximate)
-        assertEquals(listOf("Kaizo#1"), requests)
+        assertEquals(listOf("Kaizo#1", "by:Kaizo#1"), requests)
     }
 
     @Test
@@ -87,7 +91,7 @@ class HackSearchTest {
 
         assertEquals(listOf("Ja, tack!"), result.items.map { it.name })
         assertTrue(result.approximate)
-        assertEquals(listOf("Ja Tack#1", "JaTack#1", "Tack#1"), requests)
+        assertEquals(listOf("Ja Tack#1", "by:Ja Tack#1", "JaTack#1", "Tack#1"), requests)
     }
 
     @Test
@@ -96,7 +100,7 @@ class HackSearchTest {
         val result = HackSearch(server(listOf("Doomscroll", "Doom Castle"), requests)).search("Doom scroll")
 
         assertEquals(listOf("Doomscroll"), result.items.map { it.name })
-        assertEquals(listOf("Doom scroll#1", "Doomscroll#1"), requests)
+        assertEquals(listOf("Doom scroll#1", "by:Doom scroll#1", "Doomscroll#1"), requests)
     }
 
     @Test
@@ -106,7 +110,7 @@ class HackSearchTest {
         val result = HackSearch(server(names, requests)).search("Ja Tack")
 
         assertEquals(listOf("Ja, tack!"), result.items.map { it.name })
-        assertEquals(listOf("Ja Tack#1", "JaTack#1", "Tack#1", "Tack#2", "Tack#3"), requests)
+        assertEquals(listOf("Ja Tack#1", "by:Ja Tack#1", "JaTack#1", "Tack#1", "Tack#2", "Tack#3"), requests)
         assertNull(result.next)
     }
 
@@ -117,6 +121,36 @@ class HackSearchTest {
             .search("one two three four")
 
         assertTrue(result.items.isEmpty())
-        assertEquals(1 + 3, requests.size)
+        assertEquals(2 + 3, requests.size)
+    }
+
+    @Test
+    fun hacksByAnAuthorFollowTheNameMatches() = runTest {
+        val requests = mutableListOf<String>()
+        val names = listOf("Barbarian Quest", "Grand Poo World", "Grand Poo World 2", "Other")
+        val authors = mapOf("Grand Poo World" to "Barbarian", "Grand Poo World 2" to "Barbarian", "Barbarian Quest" to "Someone")
+        val result = HackSearch(server(names, requests, authors)).search("barbarian")
+
+        assertEquals(listOf("Barbarian Quest", "Grand Poo World", "Grand Poo World 2"), result.items.map { it.name })
+        assertFalse(result.approximate)
+        assertNull(result.next)
+        assertEquals(listOf("barbarian#1", "by:barbarian#1"), requests)
+    }
+
+    @Test
+    fun authorPagesContinueAfterTheNamePages() = runTest {
+        val requests = mutableListOf<String>()
+        val names = listOf("Kaizo 1", "Kaizo 2", "Kaizo 3", "A", "B", "C")
+        val authors = names.drop(3).associateWith { "Kaizo Author" }
+        val search = HackSearch(server(names, requests, authors))
+
+        val first = search.search("Kaizo")
+        assertEquals(listOf("Kaizo 1", "Kaizo 2", "A", "B"), first.items.map { it.name })
+        val second = search.loadMore(first.next!!, "Kaizo")
+        assertEquals(listOf("Kaizo 3"), second.items.map { it.name })
+        val third = search.loadMore(second.next!!, "Kaizo")
+        assertEquals(listOf("C"), third.items.map { it.name })
+        assertNull(third.next)
+        assertEquals(listOf("Kaizo#1", "by:Kaizo#1", "Kaizo#2", "by:Kaizo#2"), requests)
     }
 }

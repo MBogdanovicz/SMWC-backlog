@@ -3,8 +3,18 @@ package com.capivaraec.smwc.core.api
 import com.capivaraec.smwc.core.model.HackSummary
 import java.text.Normalizer
 
-/** Where to continue a search: the server term, its next page, and whether results are filtered. */
-data class SearchCursor(val term: String, val page: Int, val filtered: Boolean)
+/**
+ * Where to continue a search: the server term, its next page, and whether results are filtered.
+ * [byAuthor] pages list the hacks by an author named like the term; [authorPage] is the author
+ * page to go on with once the name pages run out (null when there is none).
+ */
+data class SearchCursor(
+    val term: String,
+    val page: Int,
+    val filtered: Boolean,
+    val byAuthor: Boolean = false,
+    val authorPage: Int? = null,
+)
 
 data class SearchResult(
     val items: List<HackSummary>,
@@ -19,6 +29,9 @@ data class SearchResult(
  * substring, so "Ja Tack" misses "Ja, tack!" and "Cube's" misses "Cube´s". When the exact text
  * finds nothing, this asks the server for smaller pieces of the query (longest first) and keeps
  * the names that contain every typed word in order, ignoring case, accents and punctuation.
+ *
+ * Hacks by an author named like the query ("Barbarian" finds "Grand Poo World") come after the
+ * ones whose name matches. The close-match fallback runs only when neither finds anything.
  */
 class HackSearch(
     private val client: SmwcClient,
@@ -28,8 +41,16 @@ class HackSearch(
     suspend fun search(query: String): SearchResult {
         val q = query.trim()
         val exact = client.search(q, page = 1)
-        if (exact.items.isNotEmpty() || q.isEmpty()) {
-            return SearchResult(exact.items, if (exact.hasNext) SearchCursor(q, 2, filtered = false) else null)
+        if (q.isEmpty()) return SearchResult(exact.items, if (exact.hasNext) SearchCursor(q, 2, filtered = false) else null)
+        val byAuthor = client.search(q, page = 1, byAuthor = true)
+        if (exact.items.isNotEmpty() || byAuthor.items.isNotEmpty()) {
+            val authorPage = if (byAuthor.hasNext) byAuthor.page + 1 else null
+            val next = when {
+                exact.hasNext -> SearchCursor(q, 2, filtered = false, authorPage = authorPage)
+                authorPage != null -> SearchCursor(q, authorPage, filtered = false, byAuthor = true)
+                else -> null
+            }
+            return SearchResult((exact.items + byAuthor.items).distinctBy { it.id }, next)
         }
         val words = SearchText.words(q)
         if (words.isEmpty()) return SearchResult(emptyList(), null)
@@ -46,8 +67,13 @@ class HackSearch(
 
     suspend fun loadMore(cursor: SearchCursor, query: String): SearchResult {
         if (!cursor.filtered) {
-            val page = client.search(cursor.term, cursor.page)
-            return SearchResult(page.items, if (page.hasNext) cursor.copy(page = page.page + 1) else null)
+            val page = client.search(cursor.term, cursor.page, byAuthor = cursor.byAuthor)
+            val next = when {
+                page.hasNext -> cursor.copy(page = page.page + 1)
+                cursor.authorPage != null -> SearchCursor(cursor.term, cursor.authorPage, filtered = false, byAuthor = true)
+                else -> null
+            }
+            return SearchResult(page.items, next)
         }
         val (items, next, _) = scan(cursor.term, cursor.page, SearchText.words(query), maxFallbackRequests)
         return SearchResult(items, next, approximate = true)
