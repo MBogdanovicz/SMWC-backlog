@@ -9,6 +9,8 @@ import com.capivaraec.smwc.core.backlog.BacklogStatus
 import com.capivaraec.smwc.core.backlog.matchesSearch
 import com.capivaraec.smwc.core.ra.AchievementFilter
 import com.capivaraec.smwc.core.ra.AchievementSort
+import com.capivaraec.smwc.core.ra.RaAchievement
+import com.capivaraec.smwc.core.ra.RaComment
 import com.capivaraec.smwc.core.ra.RaCredentials
 import com.capivaraec.smwc.core.ra.RaMatch
 import com.capivaraec.smwc.core.ra.RaProgress
@@ -305,6 +307,43 @@ class RaSetViewModel(private val app: SmwcApplication, private val gameId: Long,
                 .onSuccess { _state.value = RaSetUiState(loading = false, progress = it) }
                 .onFailure {
                     Log.w(TAG, "Could not load set $gameId", it)
+                    _state.update { s -> s.copy(loading = false, error = it.raMessage()) }
+                }
+        }
+    }
+}
+
+data class AchievementCommentsUiState(
+    /** Null until the set is loaded (it is usually cached), or if it could not be. */
+    val achievement: RaAchievement? = null,
+    val loading: Boolean = true,
+    /** Oldest first; null until loaded. */
+    val comments: List<RaComment>? = null,
+    val error: String? = null,
+)
+
+/** The comments left on one achievement's page on RetroAchievements. */
+class AchievementCommentsViewModel(private val app: SmwcApplication, private val gameId: Long, private val achievementId: Long) : ViewModel() {
+    private val _state = MutableStateFlow(AchievementCommentsUiState())
+    val state: StateFlow<AchievementCommentsUiState> = _state
+
+    init {
+        // The header: the set the user just came from, so it is in the cache.
+        viewModelScope.launch {
+            runCatching { app.retroAchievements.progress(gameId) }
+                .onSuccess { progress -> _state.update { it.copy(achievement = progress.achievements.firstOrNull { a -> a.id == achievementId }) } }
+                .onFailure { Log.w(TAG, "Could not load set $gameId", it) }
+        }
+        load()
+    }
+
+    fun load() {
+        _state.update { it.copy(loading = true, error = null) }
+        viewModelScope.launch {
+            runCatching { app.raClient.achievementComments(achievementId) }
+                .onSuccess { comments -> _state.update { it.copy(loading = false, comments = comments) } }
+                .onFailure {
+                    Log.w(TAG, "Could not load comments for achievement $achievementId", it)
                     _state.update { s -> s.copy(loading = false, error = it.raMessage()) }
                 }
         }

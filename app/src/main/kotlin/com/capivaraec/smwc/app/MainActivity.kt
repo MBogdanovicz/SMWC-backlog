@@ -50,6 +50,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.capivaraec.smwc.app.ui.AchievementCommentsScreen
 import com.capivaraec.smwc.app.ui.AchievementsScreen
 import com.capivaraec.smwc.app.ui.BacklogScreen
 import com.capivaraec.smwc.app.ui.DetailScreen
@@ -114,7 +115,14 @@ private fun AppRoot(app: SmwcApplication) {
         )
     }
     val setPane: @Composable (Long, Long?) -> Unit = { gameId, hackId ->
-        RaSetScreen(app, gameId, hackId, onOpenHack = hackId?.takeIf { it >= 0 }?.let { { nav.navigate("hack/$it") } }, onBack = null)
+        RaSetScreen(
+            app,
+            gameId,
+            hackId,
+            onOpenHack = hackId?.takeIf { it >= 0 }?.let { { nav.navigate("hack/$it") } },
+            onOpenAchievement = { nav.navigate("ra/$gameId/achievement/$it") },
+            onBack = null,
+        )
     }
 
     CompositionLocalProvider(LocalSnackbar provides snackbar) {
@@ -216,13 +224,29 @@ private fun AppRoot(app: SmwcApplication) {
                     ) { entry ->
                         val hackId = entry.arguments!!.getLong("hackId").takeIf { it != Long.MIN_VALUE }
                         val fromDetails = entry.arguments!!.getBoolean("fromDetails")
+                        val gameId = entry.arguments!!.getLong("gameId")
                         RaSetScreen(
                             app,
-                            gameId = entry.arguments!!.getLong("gameId"),
+                            gameId = gameId,
                             hackId = hackId,
                             // Not when opened from the hack's details (going back returns there), nor for
                             // hacks added by name (negative ids), which have no details page.
                             onOpenHack = if (hackId != null && hackId >= 0 && !fromDetails) ({ nav.navigate("hack/$hackId") }) else null,
+                            onOpenAchievement = { nav.navigate("ra/$gameId/achievement/$it") },
+                            onBack = { nav.popBackStack() },
+                        )
+                    }
+                    composable(
+                        "ra/{gameId}/achievement/{achievementId}",
+                        arguments = listOf(
+                            navArgument("gameId") { type = NavType.LongType },
+                            navArgument("achievementId") { type = NavType.LongType },
+                        ),
+                    ) { entry ->
+                        AchievementCommentsScreen(
+                            app,
+                            gameId = entry.arguments!!.getLong("gameId"),
+                            achievementId = entry.arguments!!.getLong("achievementId"),
                             onBack = { nav.popBackStack() },
                         )
                     }

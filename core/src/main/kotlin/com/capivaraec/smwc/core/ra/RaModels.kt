@@ -58,6 +58,17 @@ data class RaTimes(
     val masterTypical: Boolean,
 )
 
+/** A comment left on an achievement's page on RetroAchievements. */
+data class RaComment(
+    val user: String,
+    /** Epoch millis; null if RetroAchievements did not say or the date could not be read. */
+    val submittedAt: Long?,
+    val text: String,
+)
+
+/** One page of comments and how many there are in all. */
+data class RaCommentPage(val total: Int, val comments: List<RaComment>)
+
 private val FINISHED_AWARDS = setOf("beaten-softcore", "beaten-hardcore", "completed", "mastered")
 
 class RaApiException(message: String) : Exception(message)

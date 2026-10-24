@@ -2,6 +2,7 @@ package com.capivaraec.smwc.core
 
 import com.capivaraec.smwc.core.ra.CachedText
 import com.capivaraec.smwc.core.ra.RaApiException
+import com.capivaraec.smwc.core.ra.RaCommentPage
 import com.capivaraec.smwc.core.ra.RaCredentials
 import com.capivaraec.smwc.core.ra.RaNotConfiguredException
 import com.capivaraec.smwc.core.ra.RaGame
@@ -159,6 +160,68 @@ class RetroAchievementsTest {
         assertEquals("me", url.parameters["u"])
         assertEquals("30001", url.parameters["g"])
         assertEquals("1", url.parameters["a"])
+    }
+
+    @Test
+    fun commentsAreParsedLeniently() {
+        val page = RaParser.parseComments(
+            """
+            {"Count":4,"Total":9,"Results":[
+              {"User":"Alice","ULID":"01","Submitted":"2024-01-01T12:00:00.000000Z","CommentText":"Nice one"},
+              {"User":"Bob","Submitted":"2024-01-02 08:30:00","CommentText":"Tricky"},
+              {"CommentText":"No user, no date"},
+              {"User":"Empty","Submitted":"2024-01-03T00:00:00Z"}
+            ]}
+            """.trimIndent(),
+        )
+
+        assertEquals(9, page.total)
+        assertEquals(listOf("Alice", "Bob", "Unknown user"), page.comments.map { it.user })
+        assertEquals(1704110400000, page.comments[0].submittedAt)
+        assertEquals(1704184200000, page.comments[1].submittedAt)
+        assertNull(page.comments[2].submittedAt)
+        assertEquals("Tricky", page.comments[1].text)
+    }
+
+    @Test
+    fun commentsWithoutResultsAreEmptyOrAnError() {
+        assertEquals(RaCommentPage(total = 0, comments = emptyList()), RaParser.parseComments("""{"Count":0,"Total":0,"Results":[]}"""))
+        assertEquals(0, RaParser.parseComments("{}").comments.size)
+        assertFailsWith<RaApiException> { RaParser.parseComments("""{"message":"Unauthenticated."}""") }
+    }
+
+    @Test
+    fun achievementCommentsArePagedAndOldestFirst() = runTest {
+        val urls = mutableListOf<Url>()
+        val pages = listOf(
+            """{"Count":2,"Total":4,"Results":[{"User":"A","Submitted":"2024-01-01T00:00:00Z","CommentText":"old"},{"User":"B","Submitted":"2024-03-01T00:00:00Z","CommentText":"newest"}]}""",
+            """{"Count":2,"Total":4,"Results":[{"User":"D","CommentText":"undated"},{"User":"C","Submitted":"2024-02-01T00:00:00Z","CommentText":"middle"}]}""",
+        )
+        val client = RetroAchievementsClient(HttpClient(MockEngine { urls += it.url; respond(pages[urls.size - 1]) }), { RaCredentials("me", "KEY") })
+
+        val comments = client.achievementComments(4242)
+
+        assertEquals(listOf("old", "middle", "newest", "undated"), comments.map { it.text })
+        assertEquals(2, urls.size)
+        val first = urls.first()
+        assertEquals("/API/API_GetComments.php", first.encodedPath)
+        assertEquals("KEY", first.parameters["y"])
+        assertEquals("2", first.parameters["t"])
+        assertEquals("4242", first.parameters["i"])
+        assertEquals("100", first.parameters["c"])
+        assertEquals("0", first.parameters["o"])
+        assertEquals("2", urls[1].parameters["o"])
+    }
+
+    @Test
+    fun commentPagingStopsAtTheCap() = runTest {
+        var calls = 0
+        val comment = """{"User":"A","Submitted":"2024-01-01T00:00:00Z","CommentText":"x"}"""
+        val fullPage = """{"Total":100000,"Results":[${List(100) { comment }.joinToString(",")}]}"""
+        val client = RetroAchievementsClient(HttpClient(MockEngine { calls++; respond(fullPage) }), { RaCredentials("me", "KEY") })
+
+        assertEquals(RetroAchievementsClient.MAX_COMMENTS, client.achievementComments(1).size)
+        assertEquals(RetroAchievementsClient.MAX_COMMENTS / RetroAchievementsClient.COMMENTS_PAGE_SIZE, calls)
     }
 
     @Test

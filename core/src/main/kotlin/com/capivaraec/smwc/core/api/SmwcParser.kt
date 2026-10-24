@@ -3,6 +3,7 @@ package com.capivaraec.smwc.core.api
 import com.capivaraec.smwc.core.model.HackDetail
 import com.capivaraec.smwc.core.model.HackSummary
 import com.capivaraec.smwc.core.model.SearchPage
+import com.capivaraec.smwc.core.text.Links
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -44,7 +45,7 @@ object SmwcParser {
         val summary = file.toSummary() ?: throw SmwcApiException("Response has no id/name")
         return HackDetail(
             summary = summary,
-            descriptionHtml = file.field("description"),
+            descriptionHtml = file.descriptionHtml(),
             tags = file.fieldElement("tags").stringList(),
             downloadUrl = file.string("download_url")?.let(::absoluteUrl),
             sizeBytes = file.long("size"),
@@ -82,6 +83,32 @@ object SmwcParser {
             ?.long("id")
         return current ?: obsoletedBy
     }
+
+    /**
+     * The description as HTML: `fields` holds it rendered (with relative links made absolute);
+     * a description only in `raw_fields` is the author's BBCode, of which only line breaks and
+     * links are kept.
+     */
+    private fun JsonObject.descriptionHtml(): String? {
+        val html = ((this["fields"] as? JsonObject)?.string("description") ?: string("description"))?.takeIf { it.isNotBlank() }
+        if (html != null) return relativeHref.replace(html) { "href=\"${absoluteUrl(it.groupValues[1])}\"" }
+        val raw = (this["raw_fields"] as? JsonObject)?.string("description")?.takeIf { it.isNotBlank() } ?: return null
+        val linked = Links.parse(raw)
+        return buildString {
+            var last = 0
+            for (link in linked.links) {
+                append(linked.text.substring(last, link.start).escapeHtml())
+                append("<a href=\"").append(link.url.escapeHtml()).append("\">")
+                append(linked.text.substring(link.start, link.end).escapeHtml()).append("</a>")
+                last = link.end
+            }
+            append(linked.text.substring(last).escapeHtml())
+        }.replace(Regex("\r?\n"), "<br>")
+    }
+
+    private val relativeHref = Regex("""href="(/[^"]*)"""")
+
+    private fun String.escapeHtml() = replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
 
     private fun JsonObject.apiError(): String? =
         if (this["data"] == null && this["id"] == null) string("message") ?: string("error") else null

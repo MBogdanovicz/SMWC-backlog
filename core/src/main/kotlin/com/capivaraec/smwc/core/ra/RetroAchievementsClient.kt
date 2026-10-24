@@ -72,6 +72,29 @@ class RetroAchievementsClient(
     }
 
     /**
+     * Every comment on an achievement's page, oldest first. Fetched [COMMENTS_PAGE_SIZE] at a
+     * time, up to [MAX_COMMENTS].
+     */
+    suspend fun achievementComments(achievementId: Long): List<RaComment> {
+        val credentials = requireCredentials()
+        val comments = mutableListOf<RaComment>()
+        while (comments.size < MAX_COMMENTS) {
+            val page = RaParser.parseComments(
+                get("API_GetComments.php", credentials) {
+                    parameter("t", ACHIEVEMENT_COMMENTS)
+                    parameter("i", achievementId)
+                    parameter("c", COMMENTS_PAGE_SIZE)
+                    parameter("o", comments.size)
+                },
+            )
+            comments += page.comments
+            if (page.comments.isEmpty() || comments.size >= page.total) break
+        }
+        // Undated comments last; the sort is stable, so they keep the order they came in.
+        return comments.take(MAX_COMMENTS).sortedWith(compareBy(nullsLast()) { it.submittedAt })
+    }
+
+    /**
      * Checks that the key works and the user exists, before they are saved. Returns the user
      * name as RetroAchievements spells it. (The API cannot tell whose key it is, so any valid
      * key is accepted.)
@@ -98,6 +121,9 @@ class RetroAchievementsClient(
 
     companion object {
         const val SNES_CONSOLE_ID = 3
+        const val COMMENTS_PAGE_SIZE = 100
+        const val MAX_COMMENTS = 500
+        private const val ACHIEVEMENT_COMMENTS = 2 // API_GetComments.php's "t" for achievements
     }
 }
 

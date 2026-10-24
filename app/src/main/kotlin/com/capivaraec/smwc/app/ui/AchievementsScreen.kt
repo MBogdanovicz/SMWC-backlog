@@ -336,11 +336,19 @@ private fun SetRow(row: AchievementRow, selected: Boolean, onClick: () -> Unit, 
 }
 
 /**
- * Every achievement of one set, unlocked first, or only the locked ones. [onBack] null when shown
- * as a pane beside the list (no back button then).
+ * Every achievement of one set, unlocked first, or only the locked ones; tapping one opens its
+ * comments ([onOpenAchievement]). [onBack] null when shown as a pane beside the list (no back
+ * button then).
  */
 @Composable
-fun RaSetScreen(app: SmwcApplication, gameId: Long, hackId: Long?, onOpenHack: (() -> Unit)?, onBack: (() -> Unit)?) {
+fun RaSetScreen(
+    app: SmwcApplication,
+    gameId: Long,
+    hackId: Long?,
+    onOpenHack: (() -> Unit)?,
+    onOpenAchievement: (achievementId: Long) -> Unit,
+    onBack: (() -> Unit)?,
+) {
     val vm: RaSetViewModel = viewModel(key = "ra-$gameId-$hackId") { RaSetViewModel(app, gameId, hackId) }
     val state by vm.state.collectAsStateWithLifecycle()
     val suggestCompleting by vm.suggestCompleting.collectAsStateWithLifecycle()
@@ -421,7 +429,7 @@ fun RaSetScreen(app: SmwcApplication, gameId: Long, hackId: Long?, onOpenHack: (
                             }
                         }
                         items(shown, key = { it.id }) { achievement ->
-                            AchievementItem(achievement)
+                            AchievementItem(achievement, onClick = { onOpenAchievement(achievement.id) })
                         }
                     }
                 }
@@ -431,8 +439,8 @@ fun RaSetScreen(app: SmwcApplication, gameId: Long, hackId: Long?, onOpenHack: (
 }
 
 @Composable
-private fun AchievementItem(achievement: RaAchievement) {
-    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+private fun AchievementItem(achievement: RaAchievement, onClick: () -> Unit) {
+    Surface(onClick = onClick, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             AsyncImage(
                 model = achievement.badgeUrl,

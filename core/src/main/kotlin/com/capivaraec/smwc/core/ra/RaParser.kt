@@ -6,6 +6,9 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneOffset
 
 /**
  * Parses RetroAchievements Web API responses. Field names are PascalCase in the v1 API, but
@@ -73,6 +76,27 @@ object RaParser {
             masterTypical = ownMaster == null,
         )
     }
+
+    /**
+     * `API_GetComments.php`: one page of comments, in the order served. [RaCommentPage.total] is
+     * at least the comments on the page, for responses without a `Total`.
+     */
+    fun parseComments(body: String): RaCommentPage {
+        val root = json.parseToJsonElement(body) as? JsonObject ?: throw RaApiException("Unexpected comments response")
+        val results = root.field("Results") as? JsonArray
+        if (results == null) root.errorMessage()?.let { throw RaApiException(it) }
+        val comments = results.orEmpty().mapNotNull { item ->
+            val comment = item as? JsonObject ?: return@mapNotNull null
+            val text = comment.string("CommentText") ?: return@mapNotNull null
+            RaComment(user = comment.string("User") ?: "Unknown user", submittedAt = comment.string("Submitted")?.let(::parseDate), text = text)
+        }
+        return RaCommentPage(total = maxOf(root.int("Total") ?: 0, comments.size), comments = comments)
+    }
+
+    /** "2024-01-01T12:00:00.000000Z", or "2024-01-01 12:00:00" (taken as UTC). */
+    private fun parseDate(text: String): Long? =
+        runCatching { Instant.parse(text).toEpochMilli() }.getOrNull()
+            ?: runCatching { LocalDateTime.parse(text.replace(' ', 'T')).toInstant(ZoneOffset.UTC).toEpochMilli() }.getOrNull()
 
     private fun JsonObject.toGame(): RaGame? {
         val id = long("ID") ?: return null

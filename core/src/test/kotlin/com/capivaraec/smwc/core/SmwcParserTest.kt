@@ -56,6 +56,30 @@ class SmwcParserTest {
     }
 
     @Test
+    fun prefersRenderedDescriptionWithAbsoluteLinks() {
+        // Shaped like the real response for "Journey to Kaizo": BBCode in raw_fields, HTML in fields.
+        val body = """{"id": 43191, "name": "Journey to Kaizo",
+            "raw_fields": {"description": "-cutscenes, drawn by [url=https://annalavellan.de]AnnaLavellan[/url] [user=46862]"},
+            "fields": {"description": "cutscenes, drawn by <a href=\"https://annalavellan.de\" rel=\"nofollow\">AnnaLavellan</a> <a href=\"/?p=profile&amp;id=46862\" class=\"un\">Ahrion</a>"}}"""
+
+        assertEquals(
+            "cutscenes, drawn by <a href=\"https://annalavellan.de\" rel=\"nofollow\">AnnaLavellan</a> " +
+                "<a href=\"https://www.smwcentral.net/?p=profile&amp;id=46862\" class=\"un\">Ahrion</a>",
+            SmwcParser.parseHackDetail(body).descriptionHtml,
+        )
+    }
+
+    @Test
+    fun convertsBbCodeOnlyDescriptionLinks() {
+        val body = """{"id": 1, "name": "X", "raw_fields": {"description": "A & B\r\n[url=https://a.com/?x=1&y=2]Site[/url] <3"}}"""
+
+        assertEquals(
+            "A &amp; B<br><a href=\"https://a.com/?x=1&amp;y=2\">Site</a> &lt;3",
+            SmwcParser.parseHackDetail(body).descriptionHtml,
+        )
+    }
+
+    @Test
     fun surfacesApiErrorMessage() {
         val error = assertFailsWith<SmwcApiException> { SmwcParser.parseHackDetail("""{"message":"File not found."}""") }
         assertEquals("File not found.", error.message)
