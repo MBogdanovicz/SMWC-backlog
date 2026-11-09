@@ -44,6 +44,12 @@ object RaParser {
         (runCatching { json.parseToJsonElement(body) }.getOrNull() as? JsonObject)?.string("User")
 
     /**
+     * The fewest samples a median needs before RetroAchievements shows it; below that the site
+     * says "Not enough data".
+     */
+    const val MIN_SAMPLES_FOR_MEDIAN = 5
+
+    /**
      * [progression] is `API_GetGameProgression.php` (medians, in seconds); [player] is the v2
      * `users/{user}/player-games` document with its achievement sets, or null if not available.
      * The user's own beat time (hardcore first) and mastery time win over the medians; a softcore
@@ -67,13 +73,46 @@ object RaParser {
         val ownBeat = attributes?.long("timeToBeatHardcoreSeconds") ?: attributes?.long("timeToBeatSeconds")
         val ownMaster = core?.takeIf { it.string("completedHardcoreAt") != null }?.long("timeTakenHardcoreSeconds")
             ?: core?.takeIf { it.string("completedAt") != null }?.long("timeTakenSeconds")
-        val beat = ownBeat ?: medians.long("MedianTimeToBeatHardcore") ?: medians.long("MedianTimeToBeat")
-        val master = ownMaster ?: medians.long("MedianTimeToMaster") ?: medians.long("MedianTimeToComplete")
+        // Like the site, a median counts only once enough players went into it; responses without
+        // the sample count (older caches) keep the median.
+        fun median(time: String, samples: String): Long? =
+            medians.long(time)?.takeIf { (medians.long(samples) ?: MIN_SAMPLES_FOR_MEDIAN.toLong()) >= MIN_SAMPLES_FOR_MEDIAN }
+        // Hardcore medians only: softcore ones can be far off, so they never stand in.
+        val beat = ownBeat ?: median("MedianTimeToBeatHardcore", "TimesUsedInHardcoreBeatMedian")
+        val master = ownMaster ?: median("MedianTimeToMaster", "TimesUsedInMasteryMedian")
         return RaTimes(
             beatSeconds = beat?.takeIf { it > 0 },
             beatTypical = ownBeat == null,
             masterSeconds = master?.takeIf { it > 0 },
             masterTypical = ownMaster == null,
+        )
+    }
+
+    /**
+     * `API_GetGameProgression.php`: players and median times per milestone, whatever the sample
+     * size. [game] is the v2 `games/{id}` document, for how many of the players play in hardcore;
+     * without it both modes count every player.
+     */
+    fun parsePlaytimeStats(progression: String, game: String? = null): RaPlaytimeStats {
+        val root = json.parseToJsonElement(progression) as? JsonObject ?: throw RaApiException("Unexpected progression response")
+        root.errorMessage()?.let { throw RaApiException(it) }
+        fun milestone(time: String, samples: String) =
+            RaPlaytimeStats.Milestone(root.int(samples) ?: 0, root.long(time)?.takeIf { it > 0 })
+        val attributes = game?.let { runCatching { json.parseToJsonElement(it) as? JsonObject }.getOrNull() }
+            ?.let { (it.field("data") as? JsonObject)?.field("attributes") as? JsonObject }
+        val total = attributes?.int("playersTotal") ?: root.int("NumDistinctPlayers") ?: 0
+        val hardcorePlayers = attributes?.int("playersHardcore")
+        return RaPlaytimeStats(
+            hardcorePlayers = hardcorePlayers ?: total,
+            casualPlayers = hardcorePlayers?.let { (total - it).coerceAtLeast(0) } ?: total,
+            hardcore = RaPlaytimeStats.Mode(
+                beat = milestone("MedianTimeToBeatHardcore", "TimesUsedInHardcoreBeatMedian"),
+                finish = milestone("MedianTimeToMaster", "TimesUsedInMasteryMedian"),
+            ),
+            casual = RaPlaytimeStats.Mode(
+                beat = milestone("MedianTimeToBeat", "TimesUsedInBeatMedian"),
+                finish = milestone("MedianTimeToComplete", "TimesUsedInCompletionMedian"),
+            ),
         )
     }
 

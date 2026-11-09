@@ -22,6 +22,7 @@ import com.capivaraec.smwc.core.model.HackSummary
 import com.capivaraec.smwc.core.patch.PatchedRom
 import com.capivaraec.smwc.core.ra.RaMatchKind
 import kotlinx.coroutines.flow.collectLatest
+import com.capivaraec.smwc.core.ra.RaPlaytimeStats
 import com.capivaraec.smwc.core.ra.RaProgress
 import com.capivaraec.smwc.core.ra.RaTimes
 import kotlinx.coroutines.Dispatchers
@@ -180,6 +181,11 @@ class DetailViewModel(private val app: SmwcApplication, private val hackId: Long
     private val _raProgress = MutableStateFlow<RaProgress?>(null)
     val raProgress: StateFlow<RaProgress?> = _raProgress
 
+    /** Players and median times of the hack's set (RetroAchievements' "Playtime Stats"). */
+    private val _raStats = MutableStateFlow<RaPlaytimeStats?>(null)
+    val raStats: StateFlow<RaPlaytimeStats?> = _raStats
+    private var raStatsGameId: Long? = null
+
     init {
         reload()
     }
@@ -227,6 +233,17 @@ class DetailViewModel(private val app: SmwcApplication, private val hackId: Long
             if (_raProgress.value?.game?.id != found.match.game.id) {
                 _raProgress.value = runCatching { ra.progress(found.match.game.id) }.getOrNull()
             }
+            if (raStatsGameId != found.match.game.id) {
+                _raStats.value = null
+                // A nicety: a failure only leaves the stats out.
+                _raStats.value = runCatching { ra.playtimeStats(found.match.game.id) }
+                    .onFailure { Log.w("SmwcRa", "Could not load playtime stats for game ${found.match.game.id}", it) }
+                    .getOrNull()
+                raStatsGameId = found.match.game.id.takeIf { _raStats.value != null }
+            }
+        } ?: run {
+            _raStats.value = null
+            raStatsGameId = null
         }
     }
 

@@ -71,6 +71,17 @@ class RetroAchievementsClient(
         return response.bodyAsText()
     }
 
+    /** A game's v2 resource (player counts per mode among others), as raw JSON. */
+    suspend fun gameJson(gameId: Long): String {
+        val credentials = requireCredentials()
+        val response = http.get("$v2Url/games/$gameId") {
+            header("X-API-Key", credentials.apiKey)
+            header("Accept", "application/vnd.api+json")
+        }
+        if (response.status.value !in 200..299) throw RaApiException("RetroAchievements returned HTTP ${response.status.value}")
+        return response.bodyAsText()
+    }
+
     /**
      * Every comment on an achievement's page, oldest first. Fetched [COMMENTS_PAGE_SIZE] at a
      * time, up to [MAX_COMMENTS].
@@ -173,6 +184,8 @@ class RetroAchievementsRepository(
     private val timesLock = Mutex()
     private val timesCache = HashMap<Long, Pair<Long, RaTimes>>()
     private val _times = MutableStateFlow<Map<Long, RaTimes>>(emptyMap())
+    /** Playtime stats parsed alongside [timesCache], from the same response. */
+    private val statsCache = HashMap<Long, RaPlaytimeStats>()
 
     /** Times of the sets loaded so far (see [times]), by game id. */
     val loadedTimes: StateFlow<Map<Long, RaTimes>> = _times.asStateFlow()
@@ -206,6 +219,7 @@ class RetroAchievementsRepository(
         }
         timesLock.withLock {
             timesCache.clear()
+            statsCache.clear()
             timesDiskCache.clear()
             _times.value = emptyMap()
         }
@@ -219,9 +233,15 @@ class RetroAchievementsRepository(
         val fresh = { savedAt: Long -> now() - savedAt < progressMaxAgeMillis }
         val parse = { text: String ->
             val root = Json.parseToJsonElement(text).jsonObject
-            RaParser.parseTimes(root.getValue("progression").jsonPrimitive.content, root["player"]?.jsonPrimitive?.contentOrNull, gameId)
+            val progression = root.getValue("progression").jsonPrimitive.content
+            RaParser.parseTimes(progression, root["player"]?.jsonPrimitive?.contentOrNull, gameId).also {
+                runCatching { RaParser.parsePlaytimeStats(progression, root["game"]?.jsonPrimitive?.contentOrNull) }.getOrNull()
+                    ?.let { stats -> statsCache[gameId] = stats }
+            }
         }
-        val disk = timesDiskCache.read(gameId)
+        val saved = timesDiskCache.read(gameId)
+        // Copies saved before the game resource was fetched too are refreshed once (still a fallback offline).
+        val disk = saved?.takeIf { "\"game\"" in it.text }
         val times = if (!refresh && timesCache[gameId]?.takeIf { fresh(it.first) } != null) {
             timesCache.getValue(gameId).second
         } else if (!refresh && disk != null && fresh(disk.savedAt) && runCatching { parse(disk.text) }.isSuccess) {
@@ -231,9 +251,12 @@ class RetroAchievementsRepository(
                 val progression = client.progressionJson(gameId)
                 // Without the user's own times the medians still answer.
                 val player = runCatching { client.playerGameJson(gameId) }.getOrNull()
+                // Only for the hardcore / casual player counts of the playtime stats.
+                val game = runCatching { client.gameJson(gameId) }.getOrNull()
                 val text = buildJsonObject {
                     put("progression", progression)
                     player?.let { put("player", it) }
+                    put("game", game)
                 }.toString()
                 parse(text).also {
                     timesDiskCache.write(gameId, text)
@@ -241,11 +264,20 @@ class RetroAchievementsRepository(
                 }
             } catch (e: Exception) {
                 if (refresh) throw e
-                disk?.let { runCatching { parse(it.text) }.getOrNull() } ?: throw e
+                saved?.let { runCatching { parse(it.text) }.getOrNull() } ?: throw e
             }
         }
         _times.update { it + (gameId to times) }
         times
+    }
+
+    /**
+     * Players and median times per milestone for a set, from the same (cached) response as
+     * [times]; null if RetroAchievements' answer had none.
+     */
+    suspend fun playtimeStats(gameId: Long, refresh: Boolean = false): RaPlaytimeStats? {
+        times(gameId, refresh)
+        return timesLock.withLock { statsCache[gameId] }
     }
 
     /**

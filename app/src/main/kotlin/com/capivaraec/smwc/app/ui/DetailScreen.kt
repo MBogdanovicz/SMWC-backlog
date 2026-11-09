@@ -28,15 +28,19 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -74,9 +78,11 @@ import com.capivaraec.smwc.core.model.HackDetail
 import com.capivaraec.smwc.core.model.lengthDisplay
 import com.capivaraec.smwc.core.ra.RaMatchKind
 import com.capivaraec.smwc.core.ra.RaProgress
+import com.capivaraec.smwc.core.ra.RaPlaytimeStats
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
  * A hack's details. [onBack] null when shown as a pane beside a list (no back button then).
@@ -95,6 +101,7 @@ fun DetailScreen(
     val entry by vm.entry.collectAsStateWithLifecycle()
     val ra by vm.ra.collectAsStateWithLifecycle()
     val raProgress by vm.raProgress.collectAsStateWithLifecycle()
+    val raStats by vm.raStats.collectAsStateWithLifecycle()
     val patch by vm.patch.collectAsStateWithLifecycle()
     val switching by vm.switching.collectAsStateWithLifecycle()
     LaunchedEffect(vm) { vm.openHack.collect(onReplaceWithHack) }
@@ -159,6 +166,7 @@ fun DetailScreen(
                         onUnlink = (vm::unlinkRaSet).takeIf { entry != null },
                         onRelink = (vm::relinkRaSets).takeIf { entry?.raUnlinkedGameIds?.isNotEmpty() == true },
                     )
+                    raStats?.takeIf { ra is RaLookup.Found }?.let { PlaytimeStatsCard(it) }
                     StatusActions(
                         status = entry?.status,
                         onAdd = vm::add,
@@ -310,6 +318,70 @@ private fun RaSetCard(
             Icon(Icons.Filled.Link, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(6.dp))
             Text("Restore the set you unlinked")
+        }
+    }
+}
+
+/**
+ * The set's players and median times per milestone, like RetroAchievements' "Playtime Stats",
+ * but medians from fewer than 5 players are shown too, marked as a small sample.
+ */
+@Composable
+private fun PlaytimeStatsCard(stats: RaPlaytimeStats) {
+    var hardcore by rememberSaveable { mutableStateOf(true) }
+    val mode = if (hardcore) stats.hardcore else stats.casual
+    val modePlayers = if (hardcore) stats.hardcorePlayers else stats.casualPlayers
+    Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Playtime stats", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                FilterChip(selected = !hardcore, onClick = { hardcore = false }, label = { Text("Casual") })
+                FilterChip(selected = hardcore, onClick = { hardcore = true }, label = { Text("Hardcore") })
+            }
+            PlaytimeRow(Icons.Filled.Check, MaterialTheme.colorScheme.onSurfaceVariant, "Unlocked an achievement", players(modePlayers), null)
+            PlaytimeRow(Icons.Filled.Flag, MaterialTheme.colorScheme.onSurfaceVariant, "Beat the game", playersShare(mode.beat.samples, modePlayers), mode.beat)
+            PlaytimeRow(
+                Icons.Filled.WorkspacePremium,
+                if (hardcore) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                if (hardcore) "Mastered" else "Completed",
+                playersShare(mode.finish.samples, modePlayers),
+                mode.finish,
+            )
+        }
+    }
+}
+
+private fun players(count: Int) = if (count == 1) "1 player" else "$count players"
+
+/** "5 players (10.9%)" of [total]; just the count when there is no share to give. */
+private fun playersShare(count: Int, total: Int): String =
+    if (total > 0 && count in 1 until total) "${players(count)} (${String.format(Locale.ROOT, "%.1f", count * 100.0 / total)}%)" else players(count)
+
+/** One milestone: what it is and how many got there; its median time on the right, if [milestone] has one. */
+@Composable
+private fun PlaytimeRow(icon: ImageVector, tint: Color, title: String, subtitle: String, milestone: RaPlaytimeStats.Milestone?) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(
+            Modifier.size(36.dp).clip(RoundedCornerShape(18.dp)).background(tint.copy(alpha = 0.18f)),
+            contentAlignment = Alignment.Center,
+        ) { Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp)) }
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (milestone != null) {
+            val median = milestone.medianSeconds
+            Column(horizontalAlignment = Alignment.End) {
+                Text(median?.let { formatDuration(it) } ?: "No data", style = MaterialTheme.typography.bodyMedium,
+                    color = if (median != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+                if (median != null) {
+                    Text(
+                        if (milestone.enoughData) "median time" else "median · small sample",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
     }
 }

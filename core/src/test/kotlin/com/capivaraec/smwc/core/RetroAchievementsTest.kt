@@ -10,6 +10,7 @@ import com.capivaraec.smwc.core.ra.RaHackIndex
 import com.capivaraec.smwc.core.ra.RaListCache
 import com.capivaraec.smwc.core.ra.RaMatchKind
 import com.capivaraec.smwc.core.ra.RaParser
+import com.capivaraec.smwc.core.ra.RaPlaytimeStats
 import com.capivaraec.smwc.core.ra.RaProgressCache
 import com.capivaraec.smwc.core.ra.RaTimes
 import com.capivaraec.smwc.core.ra.RetroAchievementsClient
@@ -300,6 +301,39 @@ class RetroAchievementsTest {
 
         val unfinished = """{"data":[{"attributes":{}}],"included":[{"type":"player-achievement-sets","attributes":{"timeTakenHardcoreSeconds":500,"setContext":[{"gameId":5,"type":"core"}]}}]}"""
         assertEquals(RaTimes(7200, true, 36000, true), RaParser.parseTimes(progression, unfinished, 5))
+    }
+
+    @Test
+    fun hardcoreMediansWithTooFewSamplesAreIgnoredWithoutSoftcoreFallback() {
+        val few = """{"TimesUsedInHardcoreBeatMedian":4,"MedianTimeToBeatHardcore":7200,
+            "TimesUsedInBeatMedian":5,"MedianTimeToBeat":3600,
+            "TimesUsedInMasteryMedian":3,"MedianTimeToMaster":16800,
+            "TimesUsedInCompletionMedian":2,"MedianTimeToComplete":20000}"""
+        assertEquals(RaTimes(null, true, null, true), RaParser.parseTimes(few, null, 5))
+
+        val enough = """{"TimesUsedInHardcoreBeatMedian":5,"MedianTimeToBeatHardcore":7200,"TimesUsedInMasteryMedian":5,"MedianTimeToMaster":16800}"""
+        assertEquals(RaTimes(7200, true, 16800, true), RaParser.parseTimes(enough, null, 5))
+    }
+
+    @Test
+    fun playtimeStatsKeepSmallSamples() {
+        val body = """{"NumDistinctPlayers":46,"TimesUsedInHardcoreBeatMedian":5,"MedianTimeToBeatHardcore":50640,
+            "TimesUsedInMasteryMedian":3,"MedianTimeToMaster":16800,"TimesUsedInBeatMedian":6,"MedianTimeToBeat":40000,
+            "TimesUsedInCompletionMedian":0,"MedianTimeToComplete":null}"""
+        val stats = RaParser.parsePlaytimeStats(body)
+        assertEquals(46, stats.hardcorePlayers)
+        assertEquals(46, stats.casualPlayers)
+        assertEquals(RaPlaytimeStats.Milestone(5, 50640), stats.hardcore.beat)
+        assertEquals(RaPlaytimeStats.Milestone(3, 16800), stats.hardcore.finish)
+        assertTrue(stats.hardcore.beat.enoughData)
+        assertFalse(stats.hardcore.finish.enoughData)
+        assertEquals(RaPlaytimeStats.Milestone(6, 40000), stats.casual.beat)
+        assertEquals(RaPlaytimeStats.Milestone(0, null), stats.casual.finish)
+
+        val game = """{"data":{"type":"games","id":"18191","attributes":{"playersTotal":62,"playersHardcore":46}}}"""
+        val split = RaParser.parsePlaytimeStats(body, game)
+        assertEquals(46, split.hardcorePlayers)
+        assertEquals(16, split.casualPlayers)
     }
 
     private class MemoryProgressCache : RaProgressCache {

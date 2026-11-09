@@ -58,6 +58,28 @@ data class RaTimes(
     val masterTypical: Boolean,
 )
 
+/**
+ * How many players reached each milestone of a set and their median time, in hardcore and in
+ * casual, like the site's "Playtime Stats". Medians are kept even from small samples; callers
+ * decide whether [Milestone.enoughData] matters.
+ */
+data class RaPlaytimeStats(
+    /** Players who unlocked an achievement in hardcore; the rest of them count as casual. */
+    val hardcorePlayers: Int,
+    val casualPlayers: Int,
+    val hardcore: Mode,
+    val casual: Mode,
+) {
+    /** [finish] is a mastery in hardcore, a completion in casual. */
+    data class Mode(val beat: Milestone, val finish: Milestone)
+
+    /** [samples] is how many players' times went into [medianSeconds]. */
+    data class Milestone(val samples: Int, val medianSeconds: Long?) {
+        /** Whether RetroAchievements itself would show the median. */
+        val enoughData: Boolean get() = samples >= RaParser.MIN_SAMPLES_FOR_MEDIAN
+    }
+}
+
 /** A comment left on an achievement's page on RetroAchievements. */
 data class RaComment(
     val user: String,
