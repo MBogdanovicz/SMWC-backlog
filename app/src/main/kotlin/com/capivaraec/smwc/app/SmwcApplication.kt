@@ -73,12 +73,13 @@ class SmwcApplication : Application() {
     /**
      * Reads the release date, exits, rating and latest version of backlog hacks from SMW Central
      * in the background: once for entries added before they were stored, then weekly, since
-     * ratings change and new versions come out. Used for sorting, filtering and the "Updated" badge.
+     * ratings change and new versions come out (daily for hacks waiting for moderation, to notice
+     * when they are accepted). Used for sorting, filtering and the "Updated" badge.
      */
     private suspend fun fillInBacklogDetails() {
         backlog.load()
         backlog.state
-            .map { backlog.entriesNeedingDetails(maxAgeMillis = 7 * 24 * 60 * 60 * 1000L) }
+            .map { backlog.entriesNeedingDetails(maxAgeMillis = 7 * DAY_MILLIS, waitingMaxAgeMillis = DAY_MILLIS) }
             .distinctUntilChanged()
             .collectLatest { ids ->
                 for (id in ids) {
@@ -109,3 +110,5 @@ class SmwcApplication : Application() {
             }
     }
 }
+
+private const val DAY_MILLIS = 24 * 60 * 60 * 1000L

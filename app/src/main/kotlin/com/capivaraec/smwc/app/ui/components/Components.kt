@@ -62,6 +62,15 @@ fun Thumbnail(url: String?, modifier: Modifier = Modifier, corner: Dp = 10.dp) {
 }
 
 /** A small rounded label, e.g. "20 exits" or "★ 4.8". */
+/** Marks a hack that was submitted to SMW Central but not yet accepted by a moderator. */
+@Composable
+fun AwaitingModerationChip(modifier: Modifier = Modifier) = InfoChip(
+    "Awaiting moderation",
+    modifier = modifier,
+    container = MaterialTheme.colorScheme.secondaryContainer,
+    content = MaterialTheme.colorScheme.onSecondaryContainer,
+)
+
 @Composable
 fun InfoChip(
     text: String,

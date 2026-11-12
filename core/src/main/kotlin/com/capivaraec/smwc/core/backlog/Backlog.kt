@@ -54,6 +54,11 @@ data class BacklogEntry(
      * links them again. A match by ROM hash is always kept.
      */
     val raUnlinkedGameIds: Set<Long> = emptySet(),
+    /**
+     * False while the hack waits for moderation on SMW Central (submitted, not yet accepted).
+     * Kept fresh by [withDetails].
+     */
+    val moderated: Boolean = true,
 ) {
     /** A newer version of this hack is on SMW Central. */
     val hasNewerVersion: Boolean get() = latestVersionId != null && latestVersionId != hackId
@@ -99,12 +104,13 @@ data class BacklogDocument(
                 rating = hack.rating,
                 detailsFetchedAt = now,
                 thumbnailUrl = hack.thumbnailUrl,
+                moderated = hack.moderated,
             ),
         )
     }
 
     /**
-     * Stores the release date, exits and rating read from SMW Central (filled in for entries
+     * Stores the release date, exits, rating and moderation state read from SMW Central (filled in for entries
      * added before they were stored, and refreshed now and then since ratings change).
      * [BacklogEntry.updatedAt] is kept, so this never wins a merge over a real change made on
      * another device.
@@ -118,6 +124,7 @@ data class BacklogDocument(
             detailsFetchedAt = now,
             latestVersionId = latestVersionId,
             thumbnailUrl = hack.thumbnailUrl ?: existing.thumbnailUrl,
+            moderated = hack.moderated,
         )
         return if (updated == existing) this else upsert(updated)
     }
@@ -143,6 +150,7 @@ data class BacklogDocument(
                 detailsFetchedAt = now,
                 latestVersionId = null,
                 thumbnailUrl = latest.thumbnailUrl ?: old.thumbnailUrl,
+                moderated = latest.moderated,
                 updatedAt = now,
             ),
         )

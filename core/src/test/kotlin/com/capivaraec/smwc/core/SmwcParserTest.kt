@@ -132,4 +132,19 @@ class ThumbnailTest {
         assertEquals("https://dl.smwcentral.net/image/1.png", items[0].thumbnailUrl)
         assertNull(items[1].thumbnailUrl)
     }
+
+    @Test
+    fun hackWaitingForModerationHasNoAcceptanceDate() {
+        val body = """{"current_page":1,"last_page":1,"data":[
+            {"id":1,"name":"Waiting","moderated":false,"moderated_at":null,"moderator":null,"time":1781399518},
+            {"id":2,"name":"Accepted","moderated":true,"moderated_at":1793846360,"time":1793000000}
+        ]}"""
+        val (waiting, accepted) = SmwcParser.parseSearchPage(body).items
+
+        assertEquals(false, waiting.moderated)
+        assertNull(waiting.acceptedAt)
+        assertEquals(1781399518, waiting.submittedAt)
+        assertEquals(true, accepted.moderated)
+        assertEquals(1793846360, accepted.acceptedAt)
+    }
 }

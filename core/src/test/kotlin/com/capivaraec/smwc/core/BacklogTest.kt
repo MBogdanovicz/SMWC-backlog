@@ -1,12 +1,15 @@
 package com.capivaraec.smwc.core
 
 import com.capivaraec.smwc.core.backlog.BacklogDocument
+import com.capivaraec.smwc.core.backlog.BacklogRepository
+import com.capivaraec.smwc.core.backlog.LocalBacklogStore
 import com.capivaraec.smwc.core.backlog.RaSetFilter
 import com.capivaraec.smwc.core.backlog.BacklogFilter
 import com.capivaraec.smwc.core.backlog.BacklogSort
 import com.capivaraec.smwc.core.backlog.BacklogStatus
 import com.capivaraec.smwc.core.backlog.sortedWith
 import com.capivaraec.smwc.core.model.HackSummary
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -258,5 +261,36 @@ class BacklogTest {
         doc = doc.relinkRaSets(1, now = 30)
         assertTrue(doc.entry(1)!!.raUnlinkedGameIds.isEmpty())
         assertEquals(30, doc.entry(1)!!.updatedAt)
+    }
+
+    private fun waiting(id: Long) = hack(id).copy(moderated = false, thumbnailUrl = "https://img/$id.png")
+
+    @Test
+    fun moderationStateFollowsSmwCentral() {
+        val doc = BacklogDocument().add(waiting(1), now = 10)
+        assertFalse(doc.entry(1)!!.moderated)
+
+        val accepted = doc.withDetails(waiting(1).copy(moderated = true, acceptedAt = 500), now = 99).entry(1)!!
+        assertTrue(accepted.moderated)
+        assertEquals(500, accepted.acceptedAt)
+        assertEquals(10, accepted.updatedAt)
+    }
+
+    @Test
+    fun hacksWaitingForModerationAreReadAgainSooner() = runTest {
+        var clock = 0L
+        val store = object : LocalBacklogStore {
+            var doc = BacklogDocument()
+            override suspend fun read() = doc
+            override suspend fun write(document: BacklogDocument) { doc = document }
+        }
+        val repo = BacklogRepository(store) { clock }
+        repo.add(waiting(1))
+        repo.add(waiting(2).copy(moderated = true))
+
+        clock = 2
+        assertEquals(listOf(1L), repo.entriesNeedingDetails(maxAgeMillis = 10, waitingMaxAgeMillis = 1))
+        clock = 10
+        assertEquals(listOf(1L, 2L), repo.entriesNeedingDetails(maxAgeMillis = 10, waitingMaxAgeMillis = 1))
     }
 }

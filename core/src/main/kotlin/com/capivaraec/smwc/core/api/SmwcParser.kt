@@ -57,6 +57,7 @@ object SmwcParser {
     private fun JsonObject.toSummary(): HackSummary? {
         val id = long("id") ?: return null
         val name = string("name") ?: return null
+        val moderated = (this["moderated"] as? JsonPrimitive)?.contentOrNull?.toBooleanStrictOrNull() ?: true
         return HackSummary(
             id = id,
             name = name,
@@ -66,8 +67,10 @@ object SmwcParser {
             rating = double("rating"),
             downloads = long("downloads"),
             submittedAt = long("submitted_at") ?: long("time"),
-            acceptedAt = long("moderated_at") ?: long("time"),
+            // A hack waiting for moderation has no acceptance date; its "time" is when it was submitted.
+            acceptedAt = if (moderated) long("moderated_at") ?: long("time") else null,
             thumbnailUrl = (this["images"] ?: this["screenshots"]).stringList().firstOrNull()?.let(::absoluteUrl),
+            moderated = moderated,
         )
     }
 

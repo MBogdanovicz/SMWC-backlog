@@ -68,6 +68,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
 import com.capivaraec.smwc.app.SmwcApplication
+import com.capivaraec.smwc.app.ui.components.AwaitingModerationChip
 import com.capivaraec.smwc.app.ui.components.Badge
 import com.capivaraec.smwc.app.ui.components.DifficultyChip
 import com.capivaraec.smwc.app.ui.components.InfoChip
@@ -244,6 +245,7 @@ private fun Header(detail: HackDetail) {
         ).joinToString(" · ")
         if (byline.isNotEmpty()) Text(byline, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (!s.moderated) AwaitingModerationChip()
             DifficultyChip(s.difficulty)
             lengthDisplay(s.length)?.let { InfoChip(it) }
             s.rating?.let { InfoChip("★ %.1f".format(it)) }

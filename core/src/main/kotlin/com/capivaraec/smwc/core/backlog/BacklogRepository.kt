@@ -44,11 +44,13 @@ class BacklogRepository(
 
     /**
      * SMW Central hacks whose release date, exits, rating and thumbnail were never read, or were
-     * read more than [maxAgeMillis] ago (ratings change over time).
+     * read more than [maxAgeMillis] ago (ratings change over time). Hacks waiting for moderation
+     * are read again after [waitingMaxAgeMillis] instead, to notice sooner when they are accepted.
      */
-    fun entriesNeedingDetails(maxAgeMillis: Long): List<Long> = _state.value.visible
+    fun entriesNeedingDetails(maxAgeMillis: Long, waitingMaxAgeMillis: Long = maxAgeMillis): List<Long> = _state.value.visible
         .filter {
-            !it.custom && (it.detailsFetchedAt == null || it.thumbnailUrl == null || now() - it.detailsFetchedAt >= maxAgeMillis)
+            val maxAge = if (it.moderated) maxAgeMillis else waitingMaxAgeMillis
+            !it.custom && (it.detailsFetchedAt == null || it.thumbnailUrl == null || now() - it.detailsFetchedAt >= maxAge)
         }
         .map { it.hackId }
 

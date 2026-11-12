@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -47,6 +48,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.capivaraec.smwc.app.SmwcApplication
 import com.capivaraec.smwc.app.ui.components.AppMark
+import com.capivaraec.smwc.app.ui.components.AwaitingModerationChip
 import com.capivaraec.smwc.app.ui.components.DifficultyChip
 import com.capivaraec.smwc.app.ui.components.InfoChip
 import com.capivaraec.smwc.app.ui.components.ListDetailLayout
@@ -138,8 +140,13 @@ private fun SearchList(vm: SearchViewModel, selectedId: Long?, onOpenHack: (Long
                 ),
                 modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
             )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = !state.waiting, onClick = { vm.setWaiting(false) }, label = { Text("Accepted") })
+                FilterChip(selected = state.waiting, onClick = { vm.setWaiting(true) }, label = { Text("Awaiting moderation") })
+            }
             SectionLabel(
                 when {
+                    state.searchedQuery.isEmpty() && state.waiting -> "Waiting for moderation"
                     state.searchedQuery.isEmpty() -> "Latest hacks"
                     state.approximate -> "Similar names"
                     else -> "Results"
@@ -207,6 +214,7 @@ fun HackCard(hack: HackSummary, selected: Boolean, onClick: () -> Unit) {
                     )
                 }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (!hack.moderated) AwaitingModerationChip()
                     DifficultyChip(hack.difficulty)
                     lengthDisplay(hack.length)?.let { InfoChip(it) }
                     hack.rating?.let { InfoChip("★ %.1f".format(it)) }

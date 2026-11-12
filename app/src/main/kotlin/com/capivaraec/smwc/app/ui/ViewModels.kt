@@ -49,6 +49,8 @@ private fun Throwable.userMessage(): String = when (this) {
 
 data class SearchUiState(
     val query: String = "",
+    /** Searches the hacks waiting for moderation instead of the accepted ones. */
+    val waiting: Boolean = false,
     /** The query the current results are for ("" = latest hacks). */
     val searchedQuery: String = "",
     val results: List<HackSummary> = emptyList(),
@@ -97,7 +99,15 @@ class SearchViewModel(private val search: HackSearch, private val backlog: Backl
 
     fun search() {
         val query = _state.value.query.trim()
-        load { search.search(query) to query }
+        val waiting = _state.value.waiting
+        load { search.search(query, waiting) to query }
+    }
+
+    /** Switches between accepted hacks and hacks waiting for moderation, and searches again. */
+    fun setWaiting(waiting: Boolean) {
+        if (waiting == _state.value.waiting) return
+        _state.update { it.copy(waiting = waiting) }
+        search()
     }
 
     /** Empties the search box and shows the latest hacks again. */

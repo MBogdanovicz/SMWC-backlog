@@ -34,10 +34,13 @@ class SmwcClient(
         descending: Boolean = true,
         /** Matches [query] against the authors' names instead of the hack names. */
         byAuthor: Boolean = false,
+        /** Lists hacks waiting for moderation (submitted but not yet accepted) instead of accepted ones. */
+        waiting: Boolean = false,
     ): SearchPage {
         val body = get {
             parameter("a", "getsectionlist")
             parameter("s", SECTION)
+            if (waiting) parameter("u", 1)
             parameter("n", page)
             parameter("o", sort.apiValue)
             parameter("d", if (descending) "desc" else "asc")

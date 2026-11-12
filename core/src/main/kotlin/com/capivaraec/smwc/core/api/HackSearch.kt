@@ -6,7 +6,8 @@ import java.text.Normalizer
 /**
  * Where to continue a search: the server term, its next page, and whether results are filtered.
  * [byAuthor] pages list the hacks by an author named like the term; [authorPage] is the author
- * page to go on with once the name pages run out (null when there is none).
+ * page to go on with once the name pages run out (null when there is none). [waiting] searches
+ * the hacks waiting for moderation instead of the accepted ones.
  */
 data class SearchCursor(
     val term: String,
@@ -14,6 +15,7 @@ data class SearchCursor(
     val filtered: Boolean,
     val byAuthor: Boolean = false,
     val authorPage: Int? = null,
+    val waiting: Boolean = false,
 )
 
 data class SearchResult(
@@ -32,22 +34,26 @@ data class SearchResult(
  *
  * Hacks by an author named like the query ("Barbarian" finds "Grand Poo World") come after the
  * ones whose name matches. The close-match fallback runs only when neither finds anything.
+ *
+ * With `waiting = true` the same search runs over the hacks waiting for moderation.
  */
 class HackSearch(
     private val client: SmwcClient,
     /** Extra requests allowed per search or "load more", to stay under the rate limit. */
     private val maxFallbackRequests: Int = 6,
 ) {
-    suspend fun search(query: String): SearchResult {
+    suspend fun search(query: String, waiting: Boolean = false): SearchResult {
         val q = query.trim()
-        val exact = client.search(q, page = 1)
-        if (q.isEmpty()) return SearchResult(exact.items, if (exact.hasNext) SearchCursor(q, 2, filtered = false) else null)
-        val byAuthor = client.search(q, page = 1, byAuthor = true)
+        val exact = client.search(q, page = 1, waiting = waiting)
+        if (q.isEmpty()) {
+            return SearchResult(exact.items, if (exact.hasNext) SearchCursor(q, 2, filtered = false, waiting = waiting) else null)
+        }
+        val byAuthor = client.search(q, page = 1, byAuthor = true, waiting = waiting)
         if (exact.items.isNotEmpty() || byAuthor.items.isNotEmpty()) {
             val authorPage = if (byAuthor.hasNext) byAuthor.page + 1 else null
             val next = when {
-                exact.hasNext -> SearchCursor(q, 2, filtered = false, authorPage = authorPage)
-                authorPage != null -> SearchCursor(q, authorPage, filtered = false, byAuthor = true)
+                exact.hasNext -> SearchCursor(q, 2, filtered = false, authorPage = authorPage, waiting = waiting)
+                authorPage != null -> SearchCursor(q, authorPage, filtered = false, byAuthor = true, waiting = waiting)
                 else -> null
             }
             return SearchResult((exact.items + byAuthor.items).distinctBy { it.id }, next)
@@ -58,7 +64,7 @@ class HackSearch(
         var budget = maxFallbackRequests
         for (term in SearchText.fallbackTerms(q)) {
             if (budget <= 0) break
-            val (items, next, used) = scan(term, startPage = 1, words = words, budget = budget)
+            val (items, next, used) = scan(term, startPage = 1, words = words, budget = budget, waiting = waiting)
             budget -= used
             if (items.isNotEmpty()) return SearchResult(items, next, approximate = true)
         }
@@ -67,33 +73,34 @@ class HackSearch(
 
     suspend fun loadMore(cursor: SearchCursor, query: String): SearchResult {
         if (!cursor.filtered) {
-            val page = client.search(cursor.term, cursor.page, byAuthor = cursor.byAuthor)
+            val page = client.search(cursor.term, cursor.page, byAuthor = cursor.byAuthor, waiting = cursor.waiting)
             val next = when {
                 page.hasNext -> cursor.copy(page = page.page + 1)
-                cursor.authorPage != null -> SearchCursor(cursor.term, cursor.authorPage, filtered = false, byAuthor = true)
+                cursor.authorPage != null ->
+                    SearchCursor(cursor.term, cursor.authorPage, filtered = false, byAuthor = true, waiting = cursor.waiting)
                 else -> null
             }
             return SearchResult(page.items, next)
         }
-        val (items, next, _) = scan(cursor.term, cursor.page, SearchText.words(query), maxFallbackRequests)
+        val (items, next, _) = scan(cursor.term, cursor.page, SearchText.words(query), maxFallbackRequests, cursor.waiting)
         return SearchResult(items, next, approximate = true)
     }
 
     private data class Scan(val items: List<HackSummary>, val next: SearchCursor?, val requests: Int)
 
     /** Reads pages of [term] until some names match [words], the pages end, or [budget] runs out. */
-    private suspend fun scan(term: String, startPage: Int, words: List<String>, budget: Int): Scan {
+    private suspend fun scan(term: String, startPage: Int, words: List<String>, budget: Int, waiting: Boolean): Scan {
         var page = startPage
         var requests = 0
         while (requests < budget) {
-            val result = client.search(term, page)
+            val result = client.search(term, page, waiting = waiting)
             requests++
             val matches = result.items.filter { SearchText.matches(it.name, words) }
-            val next = if (result.hasNext) SearchCursor(term, result.page + 1, filtered = true) else null
+            val next = if (result.hasNext) SearchCursor(term, result.page + 1, filtered = true, waiting = waiting) else null
             if (matches.isNotEmpty() || next == null) return Scan(matches, next, requests)
             page = next.page
         }
-        return Scan(emptyList(), SearchCursor(term, page, filtered = true), requests)
+        return Scan(emptyList(), SearchCursor(term, page, filtered = true, waiting = waiting), requests)
     }
 }
 

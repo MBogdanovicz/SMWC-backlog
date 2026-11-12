@@ -14,6 +14,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 
 class SmwcClientTest {
     private val searchBody = """{"current_page":2,"last_page":2,"data":[{"id":1,"name":"A"}]}"""
@@ -34,6 +35,18 @@ class SmwcClientTest {
         assertEquals("rating", params["o"])
         assertEquals("asc", params["d"])
         assertEquals("kaizo", params["f[name]"])
+        assertNull(params["u"]) // accepted hacks only
+    }
+
+    @Test
+    fun waitingSearchAsksForTheModerationQueue() = runTest {
+        val urls = mutableListOf<Url>()
+        val client = SmwcClient(HttpClient(MockEngine { urls += it.url; respond(searchBody) }), RateLimiter(0))
+
+        client.search("pit", waiting = true)
+
+        assertEquals("1", urls.single().parameters["u"])
+        assertEquals("pit", urls.single().parameters["f[name]"])
     }
 
     @Test

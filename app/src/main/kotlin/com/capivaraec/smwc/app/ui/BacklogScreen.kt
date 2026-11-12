@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.capivaraec.smwc.app.SmwcApplication
+import com.capivaraec.smwc.app.ui.components.AwaitingModerationChip
 import com.capivaraec.smwc.app.ui.components.Badge
 import com.capivaraec.smwc.app.ui.components.ControlChip
 import com.capivaraec.smwc.app.ui.components.DifficultyChip
@@ -297,6 +298,7 @@ private fun BacklogCard(
                         )
                     }
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (!entry.moderated) AwaitingModerationChip()
                         DifficultyChip(entry.difficulty)
                         entry.exits?.let { lengthDisplay(it.toString())?.let { text -> InfoChip(text) } }
                         entry.releaseYear()?.let { InfoChip(it.toString()) }

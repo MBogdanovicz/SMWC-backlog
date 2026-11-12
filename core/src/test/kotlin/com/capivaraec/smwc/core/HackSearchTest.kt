@@ -153,4 +153,24 @@ class HackSearchTest {
         assertNull(third.next)
         assertEquals(listOf("Kaizo#1", "by:Kaizo#1", "Kaizo#2", "by:Kaizo#2"), requests)
     }
+
+    @Test
+    fun waitingSearchStaysInTheModerationQueue() = runTest {
+        val queues = mutableListOf<String?>()
+        val client = SmwcClient(
+            HttpClient(MockEngine { request ->
+                queues += request.url.parameters["u"]
+                val page = request.url.parameters["n"]!!.toInt()
+                respond("""{"current_page":$page,"last_page":2,"data":[{"id":$page,"name":"Pit $page"}]}""")
+            }),
+            RateLimiter(0),
+        )
+        val search = HackSearch(client)
+
+        val first = search.search("", waiting = true)
+        assertTrue(first.next!!.waiting)
+        search.loadMore(first.next!!, "")
+
+        assertEquals(listOf<String?>("1", "1"), queues)
+    }
 }

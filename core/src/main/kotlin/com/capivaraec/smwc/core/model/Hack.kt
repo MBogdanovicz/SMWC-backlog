@@ -17,6 +17,8 @@ data class HackSummary(
     val acceptedAt: Long? = null,
     /** The first screenshot, for lists. */
     val thumbnailUrl: String? = null,
+    /** False while the hack waits for moderation (submitted to SMW Central but not yet accepted). */
+    val moderated: Boolean = true,
 ) {
     /** Number of exits, read from [length] ("14" or "14 exit(s)"). */
     val exits: Int? get() = exitCount(length)
